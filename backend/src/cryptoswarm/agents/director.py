@@ -2,7 +2,7 @@
 
 Cycle (every director_interval_s):
   1. For each symbol: broadcast AnalyzeRequest on agent.analyze.{symbol}
-  2. Collect QuantResult + RiskResult + SentimentResult + PortfolioResult
+  2. Collect QuantResult + RiskResult + SentimentResult + PortfolioResult + MLSignal
      (matched by correlation_id, timeout = agent_timeout_s)
   3. Call Claude: synthesize → DirectorDecision
   4. If action != hold: publish Signal to signal.execute
@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cryptoswarm.agents.llm import LLMClient
 from cryptoswarm.bus.client import BusClient
 from cryptoswarm.bus.messages import (
     AnalyzeRequest,
     DirectorDecision,
+    MLSignal,
     PortfolioResult,
     QuantResult,
     RiskResult,
@@ -28,6 +29,9 @@ from cryptoswarm.bus.messages import (
 from cryptoswarm.config.settings import Settings
 from cryptoswarm.storage.decisions import DecisionWriter
 
+if TYPE_CHECKING:
+    from cryptoswarm.learning.prompt_store import PromptStore
+
 logger = logging.getLogger(__name__)
 
 _RESULT_CLASSES = {
@@ -35,6 +39,7 @@ _RESULT_CLASSES = {
     "risk":      RiskResult,
     "sentiment": SentimentResult,
     "portfolio": PortfolioResult,
+    "ml":        MLSignal,
 }
 _REQUIRED_AGENTS = set(_RESULT_CLASSES.keys())
 
@@ -69,11 +74,15 @@ class DirectorAgent:
         llm: LLMClient,
         decisions: DecisionWriter,
         settings: Settings,
+        prompt_store: "PromptStore | None" = None,
     ) -> None:
         self._bus = bus
         self._llm = llm
         self._decisions = decisions
         self._cfg = settings
+        self._prompt_store = prompt_store
+        self._cycle_count = 0
+        self._current_prompt = _SYSTEM
         self._pending: dict[str, dict[str, Any]] = {}   # cid → {quant, risk, ...}
         self._events:  dict[str, asyncio.Event]     = {}   # cid → Event
 
@@ -156,6 +165,14 @@ class DirectorAgent:
         risk: RiskResult           = results["risk"]
         sentiment: SentimentResult = results["sentiment"]
         portfolio: PortfolioResult = results["portfolio"]
+        ml: MLSignal               = results["ml"]
+
+        # Reload evolved prompt every 10 cycles
+        if self._prompt_store is not None and self._cycle_count % 10 == 0:
+            self._current_prompt = await self._prompt_store.get(
+                "director", default=_SYSTEM
+            )
+        self._cycle_count += 1
 
         prompt = (
             f"Symbol: {symbol}\n\n"
@@ -175,6 +192,12 @@ class DirectorAgent:
             f"  Approved: {portfolio.approved}, "
             f"Correlation penalty: {portfolio.correlation_penalty:.2f}\n"
             f"  Reasoning: {portfolio.reasoning}\n\n"
+            f"ML AGENT (Kronos-base):\n"
+            f"  Regime: {ml.regime_pred}, Direction: {ml.direction_pred}, "
+            f"Short-term: {ml.short_direction}\n"
+            f"  Size adjustment: {ml.size_adjustment}, "
+            f"Confidence: {ml.confidence:.2f}\n"
+            f"  Reasoning: {ml.reasoning}\n\n"
             f"Account config: balance=${self._cfg.risk.starting_balance_usd:.0f}, "
             f"max_leverage={self._cfg.risk.max_leverage}x"
         )
@@ -188,11 +211,18 @@ class DirectorAgent:
             }
         else:
             raw = await self._llm.ask(
-                system=_SYSTEM,
+                system=self._current_prompt,
                 prompt=prompt,
                 tool_name="trading_decision",
                 tool_schema=_TOOL_SCHEMA,
             )
+
+        # Apply PPO size adjustment from ML agent
+        size_pct = float(raw["size_pct"])
+        if ml.size_adjustment == "scale_up" and ml.confidence > 0.6:
+            size_pct = min(size_pct * 1.2, self._cfg.risk.max_position_pct)
+        elif ml.size_adjustment == "scale_down":
+            size_pct = size_pct * 0.8
 
         entry_price = float(quant.indicators.get("close", 0.0))
         decision = DirectorDecision(
@@ -201,7 +231,7 @@ class DirectorAgent:
             action=raw["action"],
             side=raw["side"],
             confidence=float(raw["confidence"]),
-            size_pct=float(raw["size_pct"]),
+            size_pct=size_pct,
             sl_pct=float(raw["sl_pct"]),
             tp_pct=float(raw["tp_pct"]),
             entry_price=entry_price,

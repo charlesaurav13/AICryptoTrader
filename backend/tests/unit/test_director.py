@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from cryptoswarm.agents.director import DirectorAgent
 from cryptoswarm.bus.messages import (
-    AnalyzeRequest, QuantResult, RiskResult, SentimentResult, PortfolioResult, Signal,
+    AnalyzeRequest, QuantResult, RiskResult, SentimentResult, PortfolioResult, MLSignal, Signal,
 )
 from cryptoswarm.config.settings import Settings
 
@@ -38,6 +38,12 @@ def _make_results(symbol: str, cid: str) -> dict:
         "portfolio": PortfolioResult(
             symbol=symbol, correlation_id=cid,
             approved=True, correlation_penalty=1.0, reasoning="no existing",
+        ),
+        "ml": MLSignal(
+            symbol=symbol, correlation_id=cid,
+            regime_pred="trending_up", direction_pred="up",
+            short_direction="up", size_adjustment="hold",
+            confidence=0.7, reasoning="Kronos neutral",
         ),
     }
 
