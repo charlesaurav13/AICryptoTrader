@@ -42,7 +42,7 @@ def test_derive_uptrend():
     closes = [100.0 + i * 0.5 for i in range(60)]  # steady rise
     regime, direction, short_dir, conf = model._derive_signals(100.0, _make_pred_df(closes))
     assert direction == "up"
-    assert regime in ["trending_up", "ranging"]
+    assert regime == "trending_up"  # slope ~29% >> 0.002 threshold
     assert 0.0 <= conf <= 1.0
 
 

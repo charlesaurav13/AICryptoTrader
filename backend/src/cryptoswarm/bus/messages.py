@@ -174,8 +174,8 @@ class NewsSentimentResult(BaseMsg):
 class MLSignal(BaseMsg):
     symbol: str
     regime_pred: Literal["trending_up", "trending_down", "ranging", "volatile"]
-    direction_pred: Literal["up", "down"]       # XGBoost 1h prediction
-    short_direction: Literal["up", "down"]      # LSTM 15m prediction
+    direction_pred: Literal["up", "down"]       # Kronos long-horizon direction prediction
+    short_direction: Literal["up", "down"]      # Kronos short-horizon (15-bar) direction
     size_adjustment: Literal["hold", "scale_up", "scale_down"]
     confidence: float                           # 0.0–1.0
     reasoning: str

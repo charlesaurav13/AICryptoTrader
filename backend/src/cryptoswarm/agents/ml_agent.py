@@ -56,7 +56,7 @@ class MLAgent:
             regime, direction, short_dir, kronos_conf = await asyncio.to_thread(
                 self._kronos.predict, klines
             )
-            size_adj, ppo_conf = self._ppo.predict(feat_vec)
+            size_adj, _ppo_conf = self._ppo.predict(feat_vec)  # confidence is Kronos-derived
         except Exception as exc:
             logger.warning("MLAgent: model inference failed for %s: %s", req.symbol, exc)
             await self._publish_neutral(req, reason="model inference failed — neutral fallback")
