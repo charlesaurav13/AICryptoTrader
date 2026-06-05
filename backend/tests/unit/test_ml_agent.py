@@ -1,4 +1,4 @@
-"""Tests for MLAgent — the 5th signal provider."""
+"""Tests for MLAgent — the 5th signal provider (Kronos-powered)."""
 import numpy as np
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -15,16 +15,14 @@ def _make_agent(trained: bool = True):
     mock_features.build = AsyncMock(
         return_value=np.zeros(FEATURE_SIZE, dtype=np.float32)
     )
-    mock_features.build_sequence = AsyncMock(
-        return_value=np.zeros((30, FEATURE_SIZE), dtype=np.float32)
-    )
-    mock_xgb = MagicMock()
-    mock_xgb.predict = MagicMock(
-        return_value=("trending_up", "up", 0.78) if trained else ("ranging", "up", 0.0)
-    )
-    mock_lstm = MagicMock()
-    mock_lstm.predict = MagicMock(
-        return_value=("up", 0.65) if trained else ("up", 0.0)
+    mock_features._ts = MagicMock()
+    mock_features._ts.fetch_klines = AsyncMock(return_value=[
+        {"open": 65000.0, "high": 65100.0, "low": 64900.0, "close": 65050.0, "volume": 100.0}
+        for _ in range(50)
+    ])
+    mock_kronos = MagicMock()
+    mock_kronos.predict = MagicMock(
+        return_value=("trending_up", "up", "up", 0.78) if trained else ("ranging", "up", "up", 0.0)
     )
     mock_ppo = MagicMock()
     mock_ppo.predict = MagicMock(
@@ -35,11 +33,9 @@ def _make_agent(trained: bool = True):
     return MLAgent(
         bus=mock_bus,
         features=mock_features,
-        xgb=mock_xgb,
-        lstm=mock_lstm,
+        kronos=mock_kronos,
         ppo=mock_ppo,
         pg=mock_pg,
-        seq_len=30,
     )
 
 
@@ -55,7 +51,7 @@ async def test_ml_agent_publishes_ml_signal():
     assert msg.size_adjustment == "scale_up"
 
 
-async def test_ml_agent_zero_confidence_when_all_models_untrained():
+async def test_ml_agent_zero_confidence_when_kronos_returns_zero():
     agent = _make_agent(trained=False)
     req = AnalyzeRequest(symbol="SOLUSDT")
     await agent._handle(req)
@@ -71,18 +67,18 @@ async def test_ml_agent_stores_signal_to_db():
     agent._pg.insert_ml_signal.assert_called_once()
 
 
-async def test_ml_agent_handles_feature_error_gracefully():
+async def test_ml_agent_handles_fetch_error_gracefully():
     agent = _make_agent()
-    agent._features.build = AsyncMock(side_effect=Exception("TS down"))
+    agent._features._ts.fetch_klines = AsyncMock(side_effect=Exception("TS down"))
     req = AnalyzeRequest(symbol="BTCUSDT")
     await agent._handle(req)  # Must not raise
     agent._bus.publish.assert_called_once()
 
 
 async def test_ml_agent_neutral_fallback_also_stores_to_db():
-    """When feature build fails, _publish_neutral should still write to DB."""
+    """When data fetch fails, _publish_neutral should still write to DB."""
     agent = _make_agent()
-    agent._features.build = AsyncMock(side_effect=Exception("TS down"))
+    agent._features._ts.fetch_klines = AsyncMock(side_effect=Exception("TS down"))
     req = AnalyzeRequest(symbol="BTCUSDT")
     await agent._handle(req)
     agent._pg.insert_ml_signal.assert_called_once()
