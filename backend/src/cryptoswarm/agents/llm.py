@@ -340,6 +340,12 @@ def _make_provider(settings: Any) -> LLMProvider:
             api_key=settings.openai_api_key,
             model=settings.openai_model,
         )
+    if name == "openrouter":
+        return OpenAIProvider(
+            api_key=settings.openrouter_api_key,
+            model=settings.openrouter_model,
+            base_url="https://openrouter.ai/api/v1",
+        )
     if name == "ollama":
         return OllamaProvider(
             base_url=settings.ollama_url,
@@ -352,7 +358,7 @@ def _make_provider(settings: Any) -> LLMProvider:
         )
     raise ValueError(
         f"Unknown llm_provider={name!r}. "
-        f"Valid choices: anthropic | openai | ollama | gemini"
+        f"Valid choices: anthropic | openai | openrouter | ollama | gemini"
     )
 
 
@@ -405,13 +411,19 @@ def _make_provider_named(provider_name: str, model: str, settings: Any) -> LLMPr
         return AnthropicProvider(api_key=settings.anthropic_api_key, model=model)
     if name == "openai":
         return OpenAIProvider(api_key=settings.openai_api_key, model=model)
+    if name == "openrouter":
+        return OpenAIProvider(
+            api_key=settings.openrouter_api_key,
+            model=model,
+            base_url="https://openrouter.ai/api/v1",
+        )
     if name == "ollama":
         return OllamaProvider(base_url=settings.ollama_url, model=model)
     if name == "gemini":
         return GeminiProvider(api_key=settings.gemini_api_key, model=model)
     raise ValueError(
         f"Unknown provider {name!r} in per-agent override. "
-        f"Valid choices: anthropic | openai | ollama | gemini"
+        f"Valid choices: anthropic | openai | openrouter | ollama | gemini"
     )
 
 

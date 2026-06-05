@@ -43,9 +43,9 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------------ #
     # LLM provider selection
-    # Set LLM_PROVIDER to one of: anthropic | openai | ollama | gemini
+    # Set LLM_PROVIDER to one of: anthropic | openai | openrouter | ollama | gemini
     # ------------------------------------------------------------------ #
-    llm_provider: Literal["anthropic", "openai", "ollama", "gemini"] = "anthropic"
+    llm_provider: Literal["anthropic", "openai", "openrouter", "ollama", "gemini"] = "anthropic"
 
     # Anthropic (Claude)
     anthropic_api_key: str = ""
@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # Ollama  (local; requires `ollama serve` + model pulled)
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1"   # must support function calling
+
+    # OpenRouter (access 200+ models including DeepSeek, Llama, etc.)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "deepseek/deepseek-chat-v3-0324"
 
     # Google Gemini
     gemini_api_key: str = ""
