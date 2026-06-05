@@ -85,8 +85,8 @@ class KronosModel:
         try:
             pred_df = self._predictor.predict(
                 df=df,
-                x_timestamp=x_timestamps,
-                y_timestamp=y_timestamps,
+                x_timestamp=pd.Series(x_timestamps),
+                y_timestamp=pd.Series(y_timestamps),
                 pred_len=self._pred_len,
                 T=1.0,
                 top_p=0.9,

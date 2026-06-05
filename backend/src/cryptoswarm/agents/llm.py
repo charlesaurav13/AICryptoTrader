@@ -165,26 +165,69 @@ class OpenAIProvider(LLMProvider):
 # Ollama  (local models via OpenAI-compatible /v1 endpoint)
 # ---------------------------------------------------------------------------
 
-class OllamaProvider(OpenAIProvider):
-    """Wraps Ollama's OpenAI-compatible REST API.
+class OllamaProvider(LLMProvider):
+    """Native Ollama /api/chat provider with tool calling + qwen3 think control.
 
-    Requires ``ollama serve`` running and the chosen model pulled:
-        ollama pull llama3.1
-        ollama pull mistral-nemo
-        ollama pull qwen2.5
+    Uses Ollama's native API (not OpenAI-compatible) so we can pass
+    ``"think": false`` to disable qwen3's extended reasoning mode.
 
-    Models with confirmed tool-calling support: llama3.1, mistral-nemo,
-    qwen2.5, deepseek-r1 (>=7b).  Smaller models may silently ignore the
-    tool_choice constraint; upgrade to a larger variant if results are empty.
+    Requires ``ollama serve`` running and the chosen model pulled.
     """
 
     def __init__(self, base_url: str, model: str) -> None:
-        super().__init__(
-            api_key="ollama",          # Ollama ignores the key
-            model=model,
-            base_url=f"{base_url.rstrip('/')}/v1",
-        )
-        logger.debug("OllamaProvider model=%s base_url=%s/v1", model, base_url.rstrip("/"))
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._is_qwen3 = "qwen3" in model.lower()
+        logger.debug("OllamaProvider model=%s base_url=%s", model, self._base_url)
+
+    async def ask(
+        self,
+        system: str,
+        prompt: str,
+        tool_name: str,
+        tool_schema: dict,
+    ) -> dict[str, Any]:
+        import httpx
+
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": prompt},
+            ],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": f"Return the {tool_name} structured result.",
+                    "parameters": tool_schema,
+                },
+            }],
+        }
+        # Disable thinking for qwen3 — prevents multi-minute chain-of-thought
+        if self._is_qwen3:
+            payload["think"] = False
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(f"{self._base_url}/api/chat", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        msg = data.get("message", {})
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls:
+            args = tool_calls[0]["function"]["arguments"]
+            return args if isinstance(args, dict) else json.loads(args)
+
+        # Fallback: try parsing content as JSON
+        content = msg.get("content", "")
+        try:
+            return json.loads(content)
+        except Exception:
+            raise RuntimeError(
+                f"OllamaProvider: no tool_call for '{tool_name}'. content={content[:100]!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
