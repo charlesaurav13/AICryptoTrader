@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoSwarm Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{--bg:#0d1117;--s:#161b22;--b:#30363d;--t:#e6edf3;--m:#8b949e;--gr:#3fb950;--re:#f85149;--ye:#d29922;--bl:#58a6ff;--or:#ffa657}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
+  header{background:var(--s);border-bottom:1px solid var(--b);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+  header h1{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--gr);box-shadow:0 0 6px var(--gr)}
+  .dot.off{background:var(--re);box-shadow:0 0 6px var(--re)}
+  .hr{display:flex;align-items:center;gap:16px;color:var(--m);font-size:12px}
+  .main{padding:20px 24px;max-width:1400px;margin:0 auto}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .card{background:var(--s);border:1px solid var(--b);border-radius:8px;padding:16px}
+  .card .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--m);margin-bottom:6px}
+  .card .val{font-size:22px;font-weight:600}
+  .val.gr{color:var(--gr)}.val.re{color:var(--re)}.val.bl{color:var(--bl)}
+  .card .sub{font-size:11px;color:var(--m);margin-top:4px}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .g3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+  .panel{background:var(--s);border:1px solid var(--b);border-radius:8px}
+  .ph{padding:12px 16px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between}
+  .ph h2{font-size:13px;font-weight:600}
+  table{width:100%;border-collapse:collapse}
+  th{padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--m);border-bottom:1px solid var(--b);white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid #21262d;font-size:13px;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#1c2128}
+  .bdg{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase}
+  .bdg.long,.bdg.buy,.bdg.up{background:rgba(63,185,80,.15);color:var(--gr)}
+  .bdg.short,.bdg.sell,.bdg.down{background:rgba(248,81,73,.15);color:var(--re)}
+  .bdg.hold{background:rgba(88,166,255,.15);color:var(--bl)}
+  .bdg.volatile{background:rgba(210,153,34,.15);color:var(--ye)}
+  .bdg.trending_up{background:rgba(63,185,80,.15);color:var(--gr)}
+  .bdg.trending_down{background:rgba(248,81,73,.15);color:var(--re)}
+  .bdg.ranging{background:rgba(139,148,158,.15);color:var(--m)}
+  .ppos{color:var(--gr)}.pneg{color:var(--re)}
+  .cw{padding:16px;height:220px;position:relative}
+  .feed{height:280px;overflow-y:auto;padding:8px}
+  .fi{padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:12px;font-family:monospace;border-left:3px solid var(--b)}
+  .fi.sig{border-color:var(--or);background:rgba(255,166,87,.05)}
+  .fi.dec{border-color:var(--bl);background:rgba(88,166,255,.05)}
+  .fi.trd{border-color:var(--gr);background:rgba(63,185,80,.05)}
+  .fi.err{border-color:var(--re);background:rgba(248,81,73,.05)}
+  .ft{color:var(--m);margin-right:8px}
+  .empty{padding:32px;text-align:center;color:var(--m);font-size:13px}
+  .rbtn{background:none;border:1px solid var(--b);color:var(--m);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px}
+  .rbtn:hover{background:var(--b);color:var(--t)}
+  @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span id="sd" class="dot off"></span>CryptoSwarm <span style="color:var(--m);font-weight:400;font-size:14px">Paper Trading</span></h1>
+  <div class="hr"><span id="clk"></span><button class="rbtn" onclick="loadAll()">↺ Refresh</button></div>
+</header>
+<div class="main">
+  <div class="cards">
+    <div class="card"><div class="lbl">Balance</div><div class="val bl" id="bal">—</div><div class="sub">Paper USD</div></div>
+    <div class="card"><div class="lbl">Equity</div><div class="val" id="eq">—</div><div class="sub">Balance + open P&amp;L</div></div>
+    <div class="card"><div class="lbl">Total P&amp;L</div><div class="val" id="tpnl">—</div><div class="sub" id="tfees">Fees: —</div></div>
+    <div class="card"><div class="lbl">Win Rate</div><div class="val" id="wr">—</div><div class="sub" id="wl">— wins / — losses</div></div>
+    <div class="card"><div class="lbl">Open Positions</div><div class="val bl" id="oc">—</div><div class="sub">Active trades</div></div>
+    <div class="card"><div class="lbl">Total Trades</div><div class="val" id="tt">—</div><div class="sub">All time</div></div>
+  </div>
+  <div class="g3">
+    <div class="panel">
+      <div class="ph"><h2>Cumulative P&amp;L</h2></div>
+      <div class="cw"><canvas id="pc"></canvas><div id="npc" class="empty" style="display:none">No closed trades yet — P&amp;L chart will appear here</div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Open Positions</h2></div>
+      <table><thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Mark</th><th>P&amp;L</th></tr></thead>
+      <tbody id="pb"></tbody></table>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="panel">
+      <div class="ph"><h2>Trade History</h2></div>
+      <div style="max-height:320px;overflow-y:auto">
+        <table><thead><tr><th>#</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Reason</th><th>Date</th></tr></thead>
+        <tbody id="tb"></tbody></table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Live Agent Feed</h2><span id="fs" style="font-size:11px;color:var(--m)">connecting…</span></div>
+      <div class="feed" id="fd"></div>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="panel">
+      <div class="ph"><h2>Director Decisions</h2></div>
+      <div style="max-height:280px;overflow-y:auto">
+        <table><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Conf</th><th>Reasoning</th></tr></thead>
+        <tbody id="db"></tbody></table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Kronos ML Signals</h2></div>
+      <div style="max-height:280px;overflow-y:auto">
+        <table><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Dir</th><th>Short</th><th>Conf</th></tr></thead>
+        <tbody id="mb"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const A='http://localhost:8000';
+let ch=null;
+const f$=v=>v==null?'—':'$'+parseFloat(v).toFixed(2);
+const ft=iso=>{if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString()+' '+d.toLocaleTimeString()};
+const bdg=(t,c)=>'<span class="bdg '+(c||t||'').toLowerCase()+'">'+(t||'—')+'</span>';
+
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toLocaleTimeString()},1000);
+
+async function checkHealth(){
+  try{const r=await fetch(A+'/health');document.getElementById('sd').className='dot'+(r.ok?'':' off')}
+  catch{document.getElementById('sd').className='dot off'}
+}
+
+async function loadPositions(){
+  try{
+    const d=await(await fetch(A+'/positions')).json();
+    document.getElementById('bal').textContent=f$(d.balance);
+    const eq=document.getElementById('eq');
+    eq.textContent=f$(d.equity);
+    eq.className='val '+((d.equity||0)>=(d.balance||0)?'gr':'re');
+    const pb=document.getElementById('pb');
+    if(!d.positions||!d.positions.length){pb.innerHTML='<tr><td colspan="5" class="empty">No open positions</td></tr>';document.getElementById('oc').textContent='0';return}
+    document.getElementById('oc').textContent=d.positions.length;
+    pb.innerHTML=d.positions.map(p=>{const pnl=parseFloat(p.unrealized_pnl||0);return'<tr><td><strong>'+p.symbol+'</strong></td><td>'+bdg(p.side)+'</td><td>'+f$(p.entry_price)+'</td><td>'+f$(p.mark_price)+'</td><td class="'+(pnl>=0?'ppos':'pneg')+'">'+(pnl>=0?'+':'')+f$(pnl)+'</td></tr>'}).join('')
+  }catch(e){console.error(e)}
+}
+
+async function loadStats(){
+  try{
+    const d=await(await fetch(A+'/stats')).json();
+    document.getElementById('tt').textContent=d.total_trades||0;
+    const pnl=document.getElementById('tpnl');
+    const v=parseFloat(d.total_pnl||0);
+    pnl.textContent=(v>=0?'+':'')+f$(v);
+    pnl.className='val '+(v>=0?'gr':'re');
+    document.getElementById('tfees').textContent='Fees: '+f$(d.total_fees);
+    const wr=document.getElementById('wr');
+    wr.textContent=d.win_rate+'%';
+    wr.className='val '+((d.win_rate||0)>=50?'gr':'re');
+    document.getElementById('wl').textContent=(d.wins||0)+' wins / '+(d.losses||0)+' losses'
+  }catch(e){console.error(e)}
+}
+
+async function loadTrades(){
+  try{
+    const ts=await(await fetch(A+'/trades')).json();
+    const tb=document.getElementById('tb');
+    if(!ts||!ts.length){tb.innerHTML='<tr><td colspan="8" class="empty">No trades yet</td></tr>';return}
+    tb.innerHTML=ts.map(t=>{
+      const pnl=t.realized_pnl!=null?parseFloat(t.realized_pnl):null;
+      const ps=pnl!=null?'<span class="'+(pnl>=0?'ppos':'pneg')+'">'+(pnl>=0?'+':'')+f$(pnl)+'</span>':'<span style="color:var(--m)">open</span>';
+      return'<tr><td style="color:var(--m)">'+t.id+'</td><td><strong>'+t.symbol+'</strong></td><td>'+bdg(t.side)+'</td><td>'+f$(t.entry_price)+'</td><td>'+(t.exit_price?f$(t.exit_price):'<span style="color:var(--m)">—</span>')+'</td><td>'+ps+'</td><td>'+(t.exit_reason?bdg(t.exit_reason):'<span style="color:var(--m)">—</span>')+'</td><td style="color:var(--m);font-size:11px">'+ft(t.opened_ts).split(' ')[0]+'</td></tr>'
+    }).join('')
+  }catch(e){console.error(e)}
+}
+
+async function loadChart(){
+  try{
+    const data=await(await fetch(A+'/pnl-history')).json();
+    const npc=document.getElementById('npc'),pc=document.getElementById('pc');
+    if(!data||!data.length){npc.style.display='block';pc.style.display='none';return}
+    npc.style.display='none';pc.style.display='block';
+    const vals=data.map(d=>parseFloat(d.cumulative_pnl));
+    const col=vals[vals.length-1]>=0?'#3fb950':'#f85149';
+    if(ch)ch.destroy();
+    ch=new Chart(pc,{type:'line',data:{labels:data.map(d=>new Date(d.ts).toLocaleDateString()),datasets:[{data:vals,borderColor:col,backgroundColor:col+'20',fill:true,tension:.3,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8b949e',maxTicksLimit:6},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',callback:v=>'$'+v.toFixed(0)},grid:{color:'#21262d'}}}}})
+  }catch(e){console.error(e)}
+}
+
+async function loadDecisions(){
+  try{
+    const data=await(await fetch(A+'/decisions')).json();
+    const db=document.getElementById('db');
+    if(!data||!data.length){db.innerHTML='<tr><td colspan="5" class="empty">No decisions yet</td></tr>';return}
+    db.innerHTML=data.map(d=>{
+      const out=d.output||{};
+      const action=out.action||'—';
+      const sym=(d.input_state&&d.input_state.symbol)||out.symbol||'—';
+      const pct=Math.round((d.confidence||0)*100);
+      const rsn=(d.reasoning||'').slice(0,60)+((d.reasoning||'').length>60?'…':'');
+      return'<tr><td style="color:var(--m);font-size:11px">'+ft(d.ts)+'</td><td><strong>'+sym+'</strong></td><td>'+bdg(action)+'</td><td><span style="color:var(--bl)">'+pct+'%</span></td><td style="color:var(--m);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+rsn+'</td></tr>'
+    }).join('')
+  }catch(e){console.error(e)}
+}
+
+async function loadMl(){
+  try{
+    const data=await(await fetch(A+'/ml-signals')).json();
+    const mb=document.getElementById('mb');
+    if(!data||!data.length){mb.innerHTML='<tr><td colspan="6" class="empty">No ML signals yet</td></tr>';return}
+    mb.innerHTML=data.map(d=>'<tr><td style="color:var(--m);font-size:11px">'+ft(d.ts)+'</td><td><strong>'+d.symbol+'</strong></td><td>'+bdg(d.regime_pred,d.regime_pred)+'</td><td>'+bdg(d.direction_pred,d.direction_pred==='up'?'up':'down')+'</td><td>'+bdg(d.short_direction,d.short_direction==='up'?'up':'down')+'</td><td style="color:var(--bl)">'+(d.confidence?(d.confidence*100).toFixed(0)+'%':'—')+'</td></tr>').join('')
+  }catch(e){console.error(e)}
+}
+
+function connectFeed(){
+  const fd=document.getElementById('fd'),fs=document.getElementById('fs');
+  const es=new EventSource(A+'/events');
+  es.onopen=()=>{fs.textContent='● live';fs.style.color='var(--gr)'};
+  es.onerror=()=>{fs.textContent='✗ disconnected';fs.style.color='var(--re)'};
+  function add(topic,raw){
+    let cls='dec',txt=topic;
+    try{
+      const d=JSON.parse(raw);
+      if(topic.includes('signal.execute')){cls='sig';txt='Signal '+d.symbol+' '+d.side+' $'+d.size_usd}
+      else if(topic.includes('position')){cls='trd';txt='Position '+d.symbol+' '+d.side+(d.is_closed?' CLOSED':' update')}
+      else if(topic.includes('quant')){txt='Quant '+d.symbol+': '+d.regime+' str='+(d.signal_strength||0).toFixed(2)}
+      else if(topic.includes('ml.')){txt='Kronos '+d.symbol+': '+d.regime_pred+' dir='+d.direction_pred+' conf='+(d.confidence||0).toFixed(2)}
+      else if(topic.includes('risk')){txt='Risk '+d.symbol+': kelly='+(d.kelly_fraction||0).toFixed(3)}
+      else if(topic.includes('circuit')){cls='err';txt='Circuit tripped: '+d.breaker_name}
+    }catch{}
+    const el=document.createElement('div');
+    el.className='fi '+cls;
+    const ts=document.createElement('span');ts.className='ft';ts.textContent=new Date().toLocaleTimeString();
+    el.appendChild(ts);el.appendChild(document.createTextNode(txt));
+    fd.insertBefore(el,fd.firstChild);
+    while(fd.children.length>60)fd.removeChild(fd.lastChild);
+  }
+  es.onmessage=e=>add(e.type,e.data);
+  ['signal.execute','position.update','circuit.tripped',
+   'agent.result.quant.BTCUSDT','agent.result.quant.ETHUSDT',
+   'agent.result.ml.BTCUSDT','agent.result.ml.ETHUSDT',
+   'agent.result.risk.BTCUSDT','agent.result.risk.ETHUSDT',
+  ].forEach(ev=>es.addEventListener(ev,e=>add(ev,e.data)));
+}
+
+async function loadAll(){
+  await Promise.all([checkHealth(),loadPositions(),loadStats(),loadTrades(),loadChart(),loadDecisions(),loadMl()])
+}
+
+loadAll();
+setInterval(loadAll,15000);
+connectFeed();
+</script>
+</body>
+</html>

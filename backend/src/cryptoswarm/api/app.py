@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from cryptoswarm.api.routes import health, positions, trades, circuit, signal, sse
+from cryptoswarm.api.routes import health, positions, trades, circuit, signal, sse, dashboard
 
 
 def create_app() -> FastAPI:
@@ -10,4 +10,5 @@ def create_app() -> FastAPI:
     app.include_router(circuit.router)
     app.include_router(signal.router)
     app.include_router(sse.router)
+    app.include_router(dashboard.router)
     return app
