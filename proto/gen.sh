@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -15,6 +15,7 @@ python -m grpc_tools.protoc \
 
 # Generate Go
 cd "$PROJECT_ROOT/go-backend"
+export PATH="$PATH:$(go env GOPATH)/bin"
 protoc \
   -I "$SCRIPT_DIR" \
   --go_out=proto --go_opt=paths=source_relative \
