@@ -27,6 +27,9 @@ dependencies = [
     "numpy>=1.26",
     "apscheduler>=3.10",
     "playwright>=1.44",
+    "grpcio>=1.60",
+    "itsdangerous>=2.1",
+    "passlib[bcrypt]>=1.7",
 ]
 
 [dependency-groups]

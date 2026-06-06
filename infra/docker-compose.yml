@@ -43,6 +43,81 @@ services:
       timeout: 3s
       retries: 15
 
+  # ── Application services ────────────────────────────────────────────────────
+
+  python-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      VALKEY_URL: redis://valkey:6379
+      TIMESCALE_DSN: postgresql://postgres:postgres@timescale:5432/cryptoswarm_ts
+      POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/cryptoswarm
+    ports:
+      - "8000:8000"
+      - "50051:50051"
+    depends_on:
+      valkey:    { condition: service_healthy }
+      timescale: { condition: service_healthy }
+      postgres:  { condition: service_healthy }
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  go-gateway:
+    build:
+      context: ../go-backend
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      GRPC_ADDR: python-backend:50051
+    ports:
+      - "8080:8080"
+    depends_on:
+      python-backend: { condition: service_healthy }
+      postgres:       { condition: service_healthy }
+      timescale:      { condition: service_healthy }
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_GO_API: http://go-gateway:8080
+      NEXT_PUBLIC_GO_WS: ws://go-gateway:8080/ws
+    ports:
+      - "3000:3000"
+    depends_on:
+      go-gateway: { condition: service_started }
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
 volumes:
   timescale_data:
   postgres_data:
