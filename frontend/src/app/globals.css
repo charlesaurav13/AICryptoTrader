@@ -1,8 +1,30 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-body { background-color: #090e14; color: #e8f0fe; }
+/* ── Design tokens — Tailwind v4 @theme (replaces tailwind.config colors) ── */
+@theme {
+  --color-bg: #090e14;
+  --color-s1: #0d1420;
+  --color-s2: #111927;
+  --color-s3: #172033;
+  --color-b1: #1e2d42;
+  --color-b2: #243350;
+  --color-t1: #e8f0fe;
+  --color-t2: #94a3b8;
+  --color-t3: #4a5568;
+  --color-gr: #00d084;
+  --color-re: #ff4757;
+  --color-bl: #3d8bff;
+  --color-ye: #ffc832;
+  --color-pu: #a78bfa;
+  --color-or: #ff8c42;
+}
+
+/* ── Base styles ────────────────────────────────────────────────────────── */
+body {
+  background-color: #090e14;
+  color: #e8f0fe;
+}
+
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #243350; border-radius: 3px; }
