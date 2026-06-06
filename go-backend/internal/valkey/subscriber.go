@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 	"github.com/redis/go-redis/v9"
 	"cryptoswarm/go-backend/internal/ws"
 )
@@ -23,15 +24,23 @@ func NewSubscriber(url string, hub *ws.Hub) *Subscriber {
 }
 
 func (s *Subscriber) Run() {
-	ctx := context.Background()
-	ps := s.client.PSubscribe(ctx, "signal.execute", "position.update", "circuit.tripped", "agent.result.*")
-	ch := ps.Channel()
-	log.Println("Valkey subscriber running")
-	for msg := range ch {
-		var payload any
-		if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
-			payload = msg.Payload
+	for {
+		ctx := context.Background()
+		ps := s.client.PSubscribe(ctx,
+			"signal.execute",
+			"position.update",
+			"circuit.tripped",
+			"agent.result.*",
+		)
+		log.Println("Valkey subscriber connected")
+		for msg := range ps.Channel() {
+			var payload any
+			if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
+				payload = msg.Payload
+			}
+			s.hub.Broadcast(msg.Channel, payload)
 		}
-		s.hub.Broadcast(msg.Channel, payload)
+		log.Println("valkey: channel closed, reconnecting in 5s")
+		time.Sleep(5 * time.Second)
 	}
 }

@@ -72,7 +72,7 @@ func (s *Server) handleMLSignals(c *gin.Context) {
 func (s *Server) handlePnlHistory(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	points, err := db.GetPnlHistory(ctx, s.ts)
+	points, err := db.GetPnlHistory(ctx, s.pg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

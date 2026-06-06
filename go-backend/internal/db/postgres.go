@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -46,12 +47,12 @@ type Stats struct {
 }
 
 type Decision struct {
-	CorrelationID string      `json:"correlation_id"`
-	AgentName     string      `json:"agent_name"`
-	Output        interface{} `json:"output"`
-	Reasoning     *string     `json:"reasoning"`
-	Confidence    *float64    `json:"confidence"`
-	Ts            time.Time   `json:"ts"`
+	CorrelationID string          `json:"correlation_id"`
+	AgentName     string          `json:"agent_name"`
+	Output        json.RawMessage `json:"output"`
+	Reasoning     *string         `json:"reasoning"`
+	Confidence    *float64        `json:"confidence"`
+	Ts            time.Time       `json:"ts"`
 }
 
 type MLSignal struct {
@@ -110,6 +111,9 @@ func GetTrades(ctx context.Context, pool *pgxpool.Pool, limit int) ([]Trade, err
 		}
 		trades = append(trades, t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return trades, nil
 }
 
@@ -129,8 +133,11 @@ func GetDecisions(ctx context.Context, pool *pgxpool.Pool, limit int) ([]Decisio
 			&d.Reasoning, &d.Confidence, &d.Ts); err != nil {
 			return nil, err
 		}
-		d.Output = string(outputJSON)
+		d.Output = json.RawMessage(outputJSON)
 		decisions = append(decisions, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return decisions, nil
 }
@@ -153,6 +160,9 @@ func GetMLSignals(ctx context.Context, pool *pgxpool.Pool, limit int) ([]MLSigna
 		}
 		signals = append(signals, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return signals, nil
 }
 
@@ -174,6 +184,9 @@ func GetPnlHistory(ctx context.Context, pool *pgxpool.Pool) ([]PnlPoint, error) 
 			return nil, err
 		}
 		points = append(points, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return points, nil
 }
