@@ -28,8 +28,13 @@ dependencies = [
     "apscheduler>=3.10",
     "playwright>=1.44",
     "grpcio>=1.60",
+    "protobuf>=4.25",
+    "einops>=0.7",
+    "huggingface_hub>=0.20",
+    "tqdm>=4.66",
     "itsdangerous>=2.1",
     "passlib[bcrypt]>=1.7",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

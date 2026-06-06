@@ -6,12 +6,10 @@ RUN pip install --no-cache-dir uv==0.5.29
 WORKDIR /build
 COPY pyproject.toml .
 
-# CPU-only torch first (largest dep — own layer for cache efficiency).
-# The whl/cpu index strips CUDA, saving ~2 GB.
-RUN uv pip install --system --no-cache \
-    torch --index-url https://download.pytorch.org/whl/cpu
-
-# Remaining runtime deps (no [dev] extras)
+# Install all runtime deps in one pass.
+# Two layers: torch first (largest — own layer so cache survives minor dep changes),
+# then everything else. Both come from PyPI directly.
+RUN uv pip install --system --no-cache torch==2.3.1
 RUN uv pip install --system --no-cache .
 
 # ── Stage 2: hardened runtime ─────────────────────────────────────────────────
