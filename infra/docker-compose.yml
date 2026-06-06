@@ -1,99 +1,113 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║              CryptoSwarm — Local Docker Stack                   ║
+# ║                                                                  ║
+# ║  Start:  docker compose up --build                              ║
+# ║  Stop:   docker compose down                                    ║
+# ║  Logs:   docker compose logs -f <service>                       ║
+# ║                                                                  ║
+# ║  Services at a glance:                                          ║
+# ║    Dashboard  →  http://localhost:3000                          ║
+# ║    Go API     →  http://localhost:8080                          ║
+# ║    Python API →  http://localhost:8000                          ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
 services:
-  cs-valkey:
+
+  # ──────────────────────────────────────────────────────────────────
+  # INFRASTRUCTURE — databases and message broker
+  # These start first. App services wait until they are healthy.
+  # ──────────────────────────────────────────────────────────────────
+
+  # Valkey (Redis-compatible) — real-time event bus between agents
+  valkey:
     container_name: cryptoswarm-valkey
     image: valkey/valkey:8
     ports:
-      - "6379:6379"
+      - "6379:6379"         # access locally: redis-cli -p 6379
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-    labels:
-      com.cryptoswarm.service: valkey
-      com.cryptoswarm.tier: infra
 
-  cs-timescale:
+  # TimescaleDB — time-series storage for OHLCV candles and trade history
+  timescale:
     container_name: cryptoswarm-timescale
     image: timescale/timescaledb:latest-pg16
     environment:
-      POSTGRES_DB: cryptoswarm_ts
-      POSTGRES_USER: postgres
+      POSTGRES_DB:       cryptoswarm_ts
+      POSTGRES_USER:     postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5434:5432"
+      - "5434:5432"         # mapped to 5434 so it doesn't clash with a local postgres
     volumes:
-      - timescale_data:/var/lib/postgresql/data
-      - ./migrations/timescale:/docker-entrypoint-initdb.d
+      - timescale_data:/var/lib/postgresql/data          # persisted across restarts
+      - ./migrations/timescale:/docker-entrypoint-initdb.d  # auto-runs on first boot
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 15
-    labels:
-      com.cryptoswarm.service: timescale
-      com.cryptoswarm.tier: infra
 
-  cs-postgres:
+  # Postgres — relational storage for users, trades, decisions, ML signals
+  postgres:
     container_name: cryptoswarm-postgres
     image: postgres:16
     environment:
-      POSTGRES_DB: cryptoswarm
-      POSTGRES_USER: postgres
+      POSTGRES_DB:       cryptoswarm
+      POSTGRES_USER:     postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"
+      - "5433:5432"         # mapped to 5433 so it doesn't clash with a local postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations/postgres:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data           # persisted across restarts
+      - ./migrations/postgres:/docker-entrypoint-initdb.d   # auto-runs on first boot
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 15
-    labels:
-      com.cryptoswarm.service: postgres
-      com.cryptoswarm.tier: infra
 
-  # ── Application services ────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────
+  # APPLICATION LAYER — starts after all infra services are healthy
+  # ──────────────────────────────────────────────────────────────────
 
-  cs-python:
+  # Python Backend — AI agents, ML (Kronos), gRPC server, FastAPI REST
+  # Source: ../backend   |   Logs: docker compose logs -f python-backend
+  python-backend:
     container_name: cryptoswarm-python
     image: cryptoswarm/python:latest
     build:
       context: ../backend
       dockerfile: Dockerfile
-    env_file: ../.env
+    env_file: ../.env                   # loads all secrets from project root .env
     environment:
-      VALKEY_URL: redis://cs-valkey:6379
-      TIMESCALE_DSN: postgresql://postgres:postgres@cs-timescale:5432/cryptoswarm_ts
-      POSTGRES_DSN: postgresql://postgres:postgres@cs-postgres:5432/cryptoswarm
+      VALKEY_URL:    redis://valkey:6379
+      TIMESCALE_DSN: postgresql://postgres:postgres@timescale:5432/cryptoswarm_ts
+      POSTGRES_DSN:  postgresql://postgres:postgres@postgres:5432/cryptoswarm
     ports:
-      - "8000:8000"
-      - "50051:50051"
+      - "8000:8000"                     # FastAPI REST + SSE dashboard
+      - "50051:50051"                   # gRPC (consumed by Go gateway)
     depends_on:
-      cs-valkey:    { condition: service_healthy }
-      cs-timescale: { condition: service_healthy }
-      cs-postgres:  { condition: service_healthy }
+      valkey:    { condition: service_healthy }
+      timescale: { condition: service_healthy }
+      postgres:  { condition: service_healthy }
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
-      start_period: 60s
+      start_period: 60s   # agents take ~60s to initialise
       retries: 3
-    labels:
-      com.cryptoswarm.service: python-backend
-      com.cryptoswarm.tier: app
+    # Security: non-root, no capabilities, read-only filesystem
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
 
-  cs-go:
+  # Go Gateway — JWT auth, REST API, WebSocket hub, reads DB directly
+  # Source: ../go-backend   |   Logs: docker compose logs -f go-gateway
+  go-gateway:
     container_name: cryptoswarm-go
     image: cryptoswarm/go:latest
     build:
@@ -101,50 +115,44 @@ services:
       dockerfile: Dockerfile
     env_file: ../.env
     environment:
-      GRPC_ADDR: cs-python:50051
+      GRPC_ADDR: python-backend:50051   # talks to Python over gRPC internally
     ports:
-      - "8080:8080"
+      - "8080:8080"                     # REST + WebSocket for the Next.js frontend
     depends_on:
-      cs-python:    { condition: service_healthy }
-      cs-postgres:  { condition: service_healthy }
-      cs-timescale: { condition: service_healthy }
+      python-backend: { condition: service_healthy }
+      postgres:       { condition: service_healthy }
+      timescale:      { condition: service_healthy }
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     read_only: true
-    tmpfs:
-      - /tmp
-    labels:
-      com.cryptoswarm.service: go-gateway
-      com.cryptoswarm.tier: app
+    tmpfs: [/tmp]
 
-  cs-web:
+  # Next.js Dashboard — trading UI served at http://localhost:3000
+  # Source: ../frontend   |   Logs: docker compose logs -f web
+  web:
     container_name: cryptoswarm-web
     image: cryptoswarm/web:latest
     build:
       context: ../frontend
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_GO_API: http://cs-go:8080
-      NEXT_PUBLIC_GO_WS: ws://cs-go:8080/ws
+      NEXT_PUBLIC_GO_API: http://go-gateway:8080     # API base URL (server-side)
+      NEXT_PUBLIC_GO_WS:  ws://go-gateway:8080/ws    # WebSocket URL (server-side)
     ports:
-      - "3000:3000"
+      - "3000:3000"                     # open http://localhost:3000 in your browser
     depends_on:
-      cs-go: { condition: service_started }
+      go-gateway: { condition: service_started }
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     read_only: true
-    tmpfs:
-      - /tmp
-    labels:
-      com.cryptoswarm.service: web-frontend
-      com.cryptoswarm.tier: app
+    tmpfs: [/tmp]
 
+# ──────────────────────────────────────────────────────────────────
+# VOLUMES — data persists here even after `docker compose down`
+# To wipe everything clean: docker compose down -v
+# ──────────────────────────────────────────────────────────────────
 volumes:
-  timescale_data:
-  postgres_data:
+  timescale_data:   # OHLCV candles, trade history
+  postgres_data:    # users, decisions, ML signals, agent prompts
