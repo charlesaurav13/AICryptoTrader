@@ -32,6 +32,7 @@ from cryptoswarm.learning.prompt_evolution import PromptEvolutionEngine
 from cryptoswarm.scraper.runner import ScraperRunner
 from cryptoswarm.api.app import create_app
 from cryptoswarm.api import deps
+from cryptoswarm.grpc_server import serve_grpc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,13 +133,14 @@ async def main() -> None:
             heartbeat_loop(bus, cfg.risk.heartbeat_interval_s), name="heartbeat"
         ),
         asyncio.create_task(server.serve(),             name="api"),
+        asyncio.create_task(serve_grpc(engine, bus, port=50051), name="grpc_server"),
     ]
 
     loop = asyncio.get_running_loop()
     for sig in (_signal.SIGTERM, _signal.SIGINT):
         loop.add_signal_handler(sig, lambda: [t.cancel() for t in tasks])
 
-    logger.info("All 14 tasks started. CryptoSwarm Phase 3 running.")
+    logger.info("All 15 tasks started. CryptoSwarm Phase 3 running.")
     try:
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:
