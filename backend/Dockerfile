@@ -17,6 +17,12 @@ RUN uv pip install --system --no-cache .
 # ── Stage 2: hardened runtime ─────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+LABEL org.opencontainers.image.title="cryptoswarm-python" \
+      org.opencontainers.image.description="CryptoSwarm AI trading engine — FastAPI + gRPC + agents" \
+      org.opencontainers.image.vendor="CryptoSwarm" \
+      com.cryptoswarm.service="python-backend" \
+      com.cryptoswarm.tier="app"
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*

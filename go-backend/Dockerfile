@@ -22,6 +22,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # gcr.io/distroless/static: ~2 MB, no shell, no package manager, no setuid bins
 FROM gcr.io/distroless/static-debian12:nonroot
 
+LABEL org.opencontainers.image.title="cryptoswarm-go" \
+      org.opencontainers.image.description="CryptoSwarm Go API gateway — REST + WebSocket + gRPC client" \
+      org.opencontainers.image.vendor="CryptoSwarm" \
+      com.cryptoswarm.service="go-gateway" \
+      com.cryptoswarm.tier="app"
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /cryptoswarm-go /cryptoswarm-go
 

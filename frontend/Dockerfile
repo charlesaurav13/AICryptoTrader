@@ -30,6 +30,12 @@ RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
+LABEL org.opencontainers.image.title="cryptoswarm-web" \
+      org.opencontainers.image.description="CryptoSwarm Next.js trading dashboard" \
+      org.opencontainers.image.vendor="CryptoSwarm" \
+      com.cryptoswarm.service="web-frontend" \
+      com.cryptoswarm.tier="app"
+
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
