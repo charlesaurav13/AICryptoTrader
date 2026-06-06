@@ -1,0 +1,44 @@
+syntax = "proto3";
+package cryptoswarm;
+option go_package = "./proto;proto";
+
+service TradingService {
+  rpc GetLivePositions (Empty)  returns (PositionsResponse);
+  rpc GetAgentStatus   (Empty)  returns (AgentStatusResponse);
+  rpc StreamEvents     (Empty)  returns (stream TradeEvent);
+}
+
+message Empty {}
+
+message Position {
+  string symbol         = 1;
+  string side           = 2;
+  double qty            = 3;
+  double entry_price    = 4;
+  double mark_price     = 5;
+  double unrealized_pnl = 6;
+  double liq_price      = 7;
+}
+
+message PositionsResponse {
+  repeated Position positions = 1;
+  double balance              = 2;
+  double equity               = 3;
+}
+
+message AgentStatus {
+  string name        = 1;
+  string last_symbol = 2;
+  string last_output = 3;
+  string status      = 4;
+  int64  last_ts     = 5;
+}
+
+message AgentStatusResponse {
+  repeated AgentStatus agents = 1;
+}
+
+message TradeEvent {
+  string topic   = 1;
+  string payload = 2;
+}
