@@ -46,9 +46,20 @@ func (s *Server) routes() {
 	s.engine.GET("/ws", s.requireAuth(), s.handleWS)
 }
 
+// allowedOrigins covers local dev on any port + the Docker service name.
+var allowedOrigins = map[string]bool{
+	"http://localhost:3000": true,
+	"http://localhost:3001": true,
+	"http://localhost:3002": true,
+	"http://cs-web:3000":   true,
+}
+
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+		origin := c.Request.Header.Get("Origin")
+		if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+		}
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type")
