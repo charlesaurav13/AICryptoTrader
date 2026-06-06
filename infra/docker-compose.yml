@@ -115,7 +115,9 @@ services:
       dockerfile: Dockerfile
     env_file: ../.env
     environment:
-      GRPC_ADDR: python-backend:50051   # talks to Python over gRPC internally
+      GRPC_ADDR:     python-backend:50051        # talks to Python over gRPC internally
+      POSTGRES_DSN:  postgresql://postgres:postgres@postgres:5432/cryptoswarm
+      TIMESCALE_DSN: postgresql://postgres:postgres@timescale:5432/cryptoswarm_ts
     ports:
       - "8080:8080"                     # REST + WebSocket for the Next.js frontend
     depends_on:
