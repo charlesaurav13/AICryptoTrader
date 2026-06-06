@@ -112,8 +112,13 @@ class Settings(BaseSettings):
     prompt_evolution_lookback: int = 50
 
     # Director / agent timing
-    director_interval_s: int = 60    # how often Director cycles all symbols
-    agent_timeout_s: int = 30        # max wait for sub-agent responses
+    director_interval_s: int = 60
+    agent_timeout_s: int = 30
+
+    # ── Dashboard auth ────────────────────────────────────────────────── #
+    dashboard_username: str = "admin"
+    dashboard_password: str = "cryptoswarm2024"
+    dashboard_secret_key: str = "change-this-to-a-random-secret-32chars"
 
     @property
     def symbol_list(self) -> list[str]:

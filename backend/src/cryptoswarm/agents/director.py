@@ -44,9 +44,10 @@ _RESULT_CLASSES = {
 _REQUIRED_AGENTS = set(_RESULT_CLASSES.keys())
 
 _SYSTEM = """You are the Chief Trading Officer of a multi-agent AI futures trading system.
-Sub-agents have analyzed the market from four independent angles. Synthesize their findings
-into a single trading decision. Be decisive but conservative — when signals conflict, hold.
-Never recommend a trade with confidence below 0.6."""
+Sub-agents have analyzed the market from five independent angles. Synthesize their findings
+into a single trading decision. Be decisive — if 3 or more agents agree on direction, trade.
+Only hold when fewer than 3 agents agree, or when confidence is genuinely low.
+Never recommend a trade with confidence below 0.55."""
 
 _TOOL_SCHEMA = {
     "type": "object",
@@ -116,6 +117,8 @@ class DirectorAgent:
                 self._events[cid].set()
 
     async def _scheduler(self) -> None:
+        # Wait for all agents to subscribe before the first cycle
+        await asyncio.sleep(15)
         while True:
             for symbol in self._cfg.symbol_list:
                 asyncio.create_task(self._analyze_symbol(symbol))

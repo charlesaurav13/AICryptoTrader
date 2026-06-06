@@ -179,8 +179,7 @@ tr:hover td{background:rgba(23,35,55,.5)}
     <div class="nav-item" onclick="showPage('agents')"><span class="icon">🤖</span> Agents</div>
     <div class="nav-item" onclick="showPage('signals')"><span class="icon">🧠</span> ML Signals</div>
     <div class="nav-item" onclick="showPage('decisions')"><span class="icon">⚖️</span> Decisions</div>
-    <div class="nav-section">Tools</div>
-    <div class="nav-item" onclick="showPage('feed')"><span class="icon">📡</span> Live Feed <span class="nav-badge" id="feedBadge">0</span></div>
+
   </nav>
   <div class="sidebar-footer">
     <div class="system-status">
@@ -204,6 +203,8 @@ tr:hover td{background:rgba(23,35,55,.5)}
     </div>
     <div class="topbar-right">
       <span id="clock" style="font-variant-numeric:tabular-nums"></span>
+      <span style="color:var(--t2);font-size:12px">__USERNAME__</span>
+      <a href="/logout" style="font-size:12px;color:var(--t2);text-decoration:none;padding:5px 10px;border:1px solid var(--b1);border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--t1)'" onmouseout="this.style.color='var(--t2)'">Sign out</a>
       <button class="btn btn-ghost" onclick="loadAll()">↺ Refresh</button>
     </div>
   </div>
@@ -360,13 +361,6 @@ tr:hover td{background:rgba(23,35,55,.5)}
     </div>
   </div>
 
-  <!-- FEED PAGE -->
-  <div class="page" id="page-feed">
-    <div class="panel">
-      <div class="ph"><div class="ph-left"><h2>Live Event Stream</h2><span class="ph-tag live" id="feedStatus2">connecting</span></div><button class="btn btn-ghost" style="font-size:11px" onclick="document.getElementById('feedFull').innerHTML=''">Clear</button></div>
-      <div class="feed" style="height:calc(100vh - 180px)" id="feedFull"></div>
-    </div>
-  </div>
 
 </div>
 
@@ -640,15 +634,13 @@ async function loadMlCharts(){
 function connectFeed(){
   const es=new EventSource(A+'/events');
   es.onopen=()=>{
-    ['feedStatus','feedStatus2'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='live';el.style.color='var(--gr)'}});
+    const el=document.getElementById('feedStatus');if(el){el.textContent='live';el.style.color='var(--gr)'}
   };
   es.onerror=()=>{
-    ['feedStatus','feedStatus2'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='disconnected';el.style.color='var(--re)'}});
+    const el=document.getElementById('feedStatus');if(el){el.textContent='disconnected';el.style.color='var(--re)'}
   };
   function add(topic,raw){
     feedCount++;
-    const badge=document.getElementById('feedBadge');
-    if(badge)badge.textContent=feedCount>99?'99+':feedCount;
     let cls='dec',txt=topic,isImportant=false;
     try{
       const d=JSON.parse(raw);
@@ -672,7 +664,7 @@ function connectFeed(){
       feed.insertBefore(el,feed.firstChild);
       while(feed.children.length>100)feed.removeChild(feed.lastChild);
     }
-    addToFeed('feedOverview');addToFeed('feedFull');
+    addToFeed('feedOverview');
     if(isImportant)loadAll();
   }
   es.onmessage=e=>add(e.type,e.data);

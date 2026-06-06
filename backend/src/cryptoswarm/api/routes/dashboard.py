@@ -1,13 +1,14 @@
 """Dashboard routes — decisions, ML signals, and the HTML dashboard."""
-from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from cryptoswarm.api.deps import get_pg
+from cryptoswarm.api.auth import require_auth
 
 router = APIRouter()
 
 
 @router.get("/decisions")
-async def list_decisions(limit: int = 20, pg=Depends(get_pg)):
+async def list_decisions(limit: int = 20, pg=Depends(get_pg), _: str = Depends(require_auth)):
     rows = await pg._pool.fetch(
         """
         SELECT correlation_id, agent_name, input_state, output,
@@ -22,7 +23,7 @@ async def list_decisions(limit: int = 20, pg=Depends(get_pg)):
 
 
 @router.get("/ml-signals")
-async def list_ml_signals(limit: int = 20, pg=Depends(get_pg)):
+async def list_ml_signals(limit: int = 20, pg=Depends(get_pg), _: str = Depends(require_auth)):
     rows = await pg._pool.fetch(
         """
         SELECT symbol, ts, regime_pred, direction_pred, short_direction,
@@ -37,7 +38,7 @@ async def list_ml_signals(limit: int = 20, pg=Depends(get_pg)):
 
 
 @router.get("/stats")
-async def get_stats(pg=Depends(get_pg)):
+async def get_stats(pg=Depends(get_pg), _: str = Depends(require_auth)):
     row = await pg._pool.fetchrow(
         """
         SELECT
@@ -58,7 +59,7 @@ async def get_stats(pg=Depends(get_pg)):
 
 
 @router.get("/pnl-history")
-async def pnl_history(pg=Depends(get_pg)):
+async def pnl_history(pg=Depends(get_pg), _: str = Depends(require_auth)):
     rows = await pg._pool.fetch(
         """
         SELECT closed_ts AS ts, realized_pnl,
@@ -72,6 +73,12 @@ async def pnl_history(pg=Depends(get_pg)):
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard():
+async def dashboard(request: Request, user: str = Depends(require_auth)):
     with open("/Users/sauravpandey/claude-projects/AI_Trading/backend/src/cryptoswarm/api/dashboard.html") as f:
-        return f.read()
+        html = f.read()
+    return html.replace("__USERNAME__", user)
+
+
+@router.get("/")
+async def root():
+    return RedirectResponse(url="/dashboard")
