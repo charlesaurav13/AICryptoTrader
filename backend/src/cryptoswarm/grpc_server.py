@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import grpc
@@ -59,25 +60,48 @@ class TradingServicer(pb2_grpc.TradingServiceServicer):
         return pb2.AgentStatusResponse(agents=agents)
 
     async def StreamEvents(self, request, context):
-        async for topic, data in self._bus.psubscribe("*"):
-            if context.cancelled():
-                break
-            yield pb2.TradeEvent(topic=topic, payload=data)
+        try:
+            async for topic, data in self._bus.psubscribe("*"):
+                if not context.is_active():
+                    break
+                yield pb2.TradeEvent(topic=topic, payload=data)
+        except asyncio.CancelledError:
+            pass
 
-    def update_agent(self, name: str, symbol: str, output: str) -> None:
-        import time
-        self._agent_last[name] = {
-            "symbol": symbol, "output": output,
-            "status": "ok", "ts": int(time.time() * 1000),
-        }
+    async def _watch_agents(self) -> None:
+        """Subscribe to agent result events and populate _agent_last."""
+        try:
+            async for topic, data in self._bus.psubscribe("agent.result.*"):
+                # topic pattern: agent.result.<name>.<symbol>
+                parts = topic.split(".")
+                if len(parts) < 4:
+                    continue
+                agent_name = parts[2]
+                symbol = parts[3]
+                self._agent_last[agent_name] = {
+                    "symbol": symbol,
+                    "output": data[:120] if data else "",
+                    "status": "ok",
+                    "ts": int(time.time() * 1000),
+                }
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning("TradingServicer._watch_agents error: %s", exc)
 
 
 async def serve_grpc(engine: "PaperTradeEngine", bus: "BusClient", port: int = 50051) -> None:
     """Run the gRPC server. Call as an asyncio task."""
     servicer = TradingServicer(engine, bus)
+    # Start agent status watcher as background task
+    watcher = asyncio.create_task(servicer._watch_agents(), name="grpc_agent_watcher")
+
     server = grpc.aio.server()
     pb2_grpc.add_TradingServiceServicer_to_server(servicer, server)
     server.add_insecure_port(f"[::]:{port}")
     await server.start()
     logger.info("gRPC server listening on :%d", port)
-    await server.wait_for_termination()
+    try:
+        await server.wait_for_termination()
+    finally:
+        watcher.cancel()
