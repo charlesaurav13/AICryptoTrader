@@ -1,0 +1,28 @@
+const GO_API = process.env.NEXT_PUBLIC_GO_API ?? "http://localhost:8080";
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${GO_API}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export const api = {
+  login:      (username: string, password: string) =>
+    req<{ username: string }>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  logout:     () => req("/auth/logout", { method: "POST" }),
+  stats:      () => req<import("./types").Stats>("/api/stats"),
+  trades:     (limit = 50) => req<import("./types").Trade[]>(`/api/trades?limit=${limit}`),
+  positions:  () => req<import("./types").PositionsResponse>("/api/positions"),
+  decisions:  (limit = 20) => req<import("./types").Decision[]>(`/api/decisions?limit=${limit}`),
+  mlSignals:  (limit = 50) => req<import("./types").MLSignal[]>(`/api/ml-signals?limit=${limit}`),
+  pnlHistory: () => req<import("./types").PnlPoint[]>("/api/pnl-history"),
+  agents:     () => req<{ agents: import("./types").AgentStatus[] }>("/api/agents"),
+};
