@@ -83,7 +83,7 @@ async def main() -> None:
     quant_agent     = QuantAgent(bus=bus, ts=ts_writer, llm=make_llm_for_agent("quant", cfg))
     risk_agent      = RiskAgent(bus=bus, llm=make_llm_for_agent("risk", cfg), settings=cfg)
     sentiment_agent = SentimentAgent(bus=bus, pg=pg_writer)
-    portfolio_agent = PortfolioAgent(bus=bus, llm=make_llm_for_agent("portfolio", cfg))
+    portfolio_agent = PortfolioAgent(bus=bus, llm=make_llm_for_agent("portfolio", cfg), settings=cfg)
     ml_agent        = MLAgent(
         bus=bus, features=features,
         kronos=kronos_model, ppo=ppo_policy,

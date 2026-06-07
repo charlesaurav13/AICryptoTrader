@@ -7,12 +7,14 @@ import logging
 from cryptoswarm.agents.llm import LLMClient
 from cryptoswarm.bus.client import BusClient
 from cryptoswarm.bus.messages import AnalyzeRequest, PortfolioResult, PositionUpdate
+from cryptoswarm.config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 _SYSTEM = """You are a portfolio risk manager. Given a list of currently open futures positions
 and a proposed new trade symbol, assess correlation risk and approve or reject the trade.
-Penalize trades that add concentration risk (same sector, high correlation)."""
+Penalize trades that add concentration risk (same sector, high correlation).
+Be conservative: when in doubt, reject. A missed trade is better than an overexposed portfolio."""
 
 _TOOL_SCHEMA = {
     "type": "object",
@@ -35,9 +37,10 @@ _TOOL_SCHEMA = {
 
 
 class PortfolioAgent:
-    def __init__(self, bus: BusClient, llm: LLMClient) -> None:
+    def __init__(self, bus: BusClient, llm: LLMClient, settings: Settings | None = None) -> None:
         self._bus = bus
         self._llm = llm
+        self._settings = settings
         self._positions: dict[str, dict] = {}  # symbol → position snapshot
 
     def _on_position_update(self, update: PositionUpdate) -> None:
@@ -75,6 +78,26 @@ class PortfolioAgent:
                 logger.error("PortfolioAgent error for %s: %s", req.symbol, exc)
 
     async def _handle(self, req: AnalyzeRequest) -> None:
+        # ── Hard cap — no LLM call needed, just reject immediately ──────────
+        max_pos = self._settings.risk.max_concurrent_positions if self._settings else 5
+        if len(self._positions) >= max_pos:
+            result = PortfolioResult(
+                symbol=req.symbol,
+                correlation_id=req.correlation_id,
+                approved=False,
+                correlation_penalty=0.0,
+                reasoning=(
+                    f"Hard cap: {len(self._positions)}/{max_pos} positions already open. "
+                    "No new positions until an existing one closes."
+                ),
+            )
+            await self._bus.publish(f"agent.result.portfolio.{req.symbol}", result)
+            logger.info(
+                "PortfolioAgent: %s HARD REJECTED — at position cap (%d/%d)",
+                req.symbol, len(self._positions), max_pos,
+            )
+            return
+
         open_positions = [
             f"{sym}: {pos['side']} qty={pos['qty']} pnl=${pos['unrealized_pnl']:.2f}"
             for sym, pos in self._positions.items()
@@ -83,7 +106,7 @@ class PortfolioAgent:
 
         prompt = (
             f"Proposed trade: {req.symbol}\n"
-            f"Open positions ({len(open_positions)}):\n"
+            f"Open positions ({len(open_positions)}/{max_pos} max):\n"
             + ("\n".join(open_positions) if open_positions else "  (none)")
         )
 
