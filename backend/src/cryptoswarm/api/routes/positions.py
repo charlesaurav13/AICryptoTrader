@@ -4,7 +4,7 @@ from cryptoswarm.api.deps import get_engine
 router = APIRouter(prefix="/positions")
 
 
-@router.get("/")
+@router.get("")
 async def list_positions(engine=Depends(get_engine)):
     acc = engine._account
     return {
