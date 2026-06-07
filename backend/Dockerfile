@@ -27,7 +27,8 @@ RUN apt-get update \
 
 # Unprivileged user — no login shell, no writable home
 RUN groupadd -r -g 1001 cryptoswarm \
- && useradd  -r -u 1001 -g cryptoswarm -s /usr/sbin/nologin cryptoswarm
+ && useradd  -r -u 1001 -g cryptoswarm -s /usr/sbin/nologin cryptoswarm \
+ && mkdir -p /models && chown -R cryptoswarm:cryptoswarm /models
 
 # Copy installed packages from builder (build tools not included)
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
