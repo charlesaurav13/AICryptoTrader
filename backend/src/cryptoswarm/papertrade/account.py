@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field
 from .math import calc_unrealized_pnl, calc_realized_pnl
 
@@ -16,6 +17,7 @@ class OpenPosition:
     fees: float          # entry fees
     mark_price: float = 0.0
     funding_paid: float = 0.0
+    opened_at: float = field(default_factory=time.time)  # unix timestamp
 
     @property
     def unrealized_pnl(self) -> float:

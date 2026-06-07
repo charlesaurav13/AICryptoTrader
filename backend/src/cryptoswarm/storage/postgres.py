@@ -83,6 +83,28 @@ class PostgresWriter:
             "SELECT * FROM trades WHERE closed_ts IS NULL ORDER BY opened_ts"
         )
 
+    async def close_orphan_positions(self) -> int:
+        """Mark all DB-open trades as closed on startup.
+
+        Called once at boot so positions from dead sessions don't pollute the
+        dashboard forever. They're closed at entry price (zero realized PnL)
+        with reason='session_reset' so the stats stay honest.
+        """
+        assert self._pool
+        result = await self._pool.execute(
+            """
+            UPDATE trades
+            SET exit_price    = entry_price,
+                exit_reason   = 'session_reset',
+                realized_pnl  = 0,
+                closed_ts     = NOW()
+            WHERE closed_ts IS NULL
+            """
+        )
+        # asyncpg returns "UPDATE <n>"
+        count = int(result.split()[-1])
+        return count
+
     # ------------------------------------------------------------------
     # News pipeline
     # ------------------------------------------------------------------

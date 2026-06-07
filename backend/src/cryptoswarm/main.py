@@ -79,6 +79,12 @@ async def main() -> None:
     storage_sub = StorageSubscriber(bus, ts_writer, pg_writer)
     engine      = PaperTradeEngine(bus, cfg)
 
+    # Close any trades left open from previous sessions so the dashboard
+    # doesn't show zombie positions and balance drift is reset cleanly.
+    orphans = await pg_writer.close_orphan_positions()
+    if orphans:
+        logger.info("Startup: closed %d orphan positions from previous session(s)", orphans)
+
     # --- Agents ---
     quant_agent     = QuantAgent(bus=bus, ts=ts_writer, llm=make_llm_for_agent("quant", cfg))
     risk_agent      = RiskAgent(bus=bus, llm=make_llm_for_agent("risk", cfg), settings=cfg)

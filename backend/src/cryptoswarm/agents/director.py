@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from cryptoswarm.agents.llm import LLMClient
@@ -87,6 +88,10 @@ class DirectorAgent:
         self._current_prompt = _SYSTEM
         self._pending: dict[str, dict[str, Any]] = {}   # cid → {quant, risk, ...}
         self._events:  dict[str, asyncio.Event]     = {}   # cid → Event
+        # Cooldown: don't trade the same symbol more than once every 5 minutes.
+        # Prevents rapid direction-flip losses (LONG→SHORT→LONG every cycle).
+        self._last_signal_ts: dict[str, float] = {}   # symbol → unix timestamp
+        self._signal_cooldown_s: int = 300             # 5 minutes
 
     async def run(self) -> None:
         await asyncio.gather(
@@ -256,6 +261,18 @@ class DirectorAgent:
 
         if decision.action == "hold":
             return
+
+        # ── Cooldown guard — skip if we traded this symbol recently ──────────
+        last_ts = self._last_signal_ts.get(symbol, 0.0)
+        elapsed = time.time() - last_ts
+        if elapsed < self._signal_cooldown_s:
+            remaining = int(self._signal_cooldown_s - elapsed)
+            logger.info(
+                "DirectorAgent: %s signal suppressed — cooldown %ds remaining",
+                symbol, remaining,
+            )
+            return
+        self._last_signal_ts[symbol] = time.time()
 
         # Build Signal for PaperTradeEngine
         balance = self._cfg.risk.starting_balance_usd

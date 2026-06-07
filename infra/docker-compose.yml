@@ -85,6 +85,12 @@ services:
       VALKEY_URL:    redis://valkey:6379
       TIMESCALE_DSN: postgresql://postgres:postgres@timescale:5432/cryptoswarm_ts
       POSTGRES_DSN:  postgresql://postgres:postgres@postgres:5432/cryptoswarm
+      # HuggingFace model cache → persistent volume so Kronos (~400MB) survives restarts
+      HF_HOME:            /models
+      TRANSFORMERS_CACHE: /models
+      HF_DATASETS_CACHE:  /models/datasets
+    volumes:
+      - model_cache:/models              # Kronos-base weights persist here
     ports:
       - "8000:8000"                     # FastAPI REST + SSE dashboard
       - "50051:50051"                   # gRPC (consumed by Go gateway)
@@ -158,3 +164,4 @@ services:
 volumes:
   timescale_data:   # OHLCV candles, trade history
   postgres_data:    # users, decisions, ML signals, agent prompts
+  model_cache:      # Kronos-base HuggingFace weights (~400MB, persists across restarts)

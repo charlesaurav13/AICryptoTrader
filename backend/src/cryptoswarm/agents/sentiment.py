@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import httpx
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _FNG_URL = "https://api.alternative.me/fng/?limit=1"
+_FNG_CACHE_TTL = 300   # 5 minutes — avoids rate-limit on every Director cycle
 
 
 def _fng_to_score(value: int) -> float:
@@ -33,6 +35,9 @@ class SentimentAgent:
         self._pg = pg
         self._timeout = timeout_s
         self._news_hours = news_lookback_hours
+        # Cache the FNG result so consecutive calls within 5 min don't hit the API
+        self._fng_cache: tuple[float, str, str] | None = None
+        self._fng_cache_ts: float = 0.0
 
     async def run(self) -> None:
         async for topic, data in self._bus.psubscribe("agent.analyze.*"):
@@ -66,6 +71,10 @@ class SentimentAgent:
         logger.info("SentimentAgent: %s score=%.2f source=%s", req.symbol, combined, source)
 
     async def _fetch_fng(self) -> tuple[float, str, str]:
+        # Return cached value if still fresh
+        if self._fng_cache is not None and (time.time() - self._fng_cache_ts) < _FNG_CACHE_TTL:
+            return self._fng_cache
+
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.get(_FNG_URL)
@@ -73,9 +82,15 @@ class SentimentAgent:
                 data = resp.json()["data"][0]
                 value = int(data["value"])
                 label = data.get("value_classification", "Unknown")
-                return _fng_to_score(value), "fear_greed_api", f"{label} ({value}/100)"
+                result = _fng_to_score(value), "fear_greed_api", f"{label} ({value}/100)"
+                self._fng_cache = result
+                self._fng_cache_ts = time.time()
+                return result
         except Exception as exc:
             logger.warning("SentimentAgent: FNG API unavailable: %s", exc)
+            # Return stale cache if we have one, otherwise neutral
+            if self._fng_cache is not None:
+                return self._fng_cache
             return 0.0, "neutral_fallback", "API unavailable"
 
     async def _fetch_news_score(self, symbol: str) -> tuple[float, int]:

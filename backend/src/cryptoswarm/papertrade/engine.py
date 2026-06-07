@@ -2,11 +2,17 @@
 Paper trade engine.
 Subscribes to: signal.execute, market.mark.*
 Publishes to: trade.executed, position.update, risk.veto, circuit.tripped
+
+Key behaviours:
+  - Close opposite-side position before opening a new one (no silent overwrites).
+  - Force-close any position open longer than max_hold_hours.
+  - Track last seen mark price per symbol for accurate entry price fallback.
 """
 from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from cryptoswarm.bus.client import BusClient
 from cryptoswarm.bus.messages import (
@@ -24,6 +30,9 @@ from cryptoswarm.risk.breakers import DailyLossBreaker, MaxDrawdownBreaker
 
 logger = logging.getLogger(__name__)
 
+# Force-close any position open longer than this (prevents positions drifting forever)
+_MAX_HOLD_SECONDS = 6 * 3600   # 6 hours
+
 
 class PaperTradeEngine:
     def __init__(self, bus: BusClient, settings: Settings) -> None:
@@ -35,6 +44,9 @@ class PaperTradeEngine:
             settings.risk.starting_balance_usd, settings.risk.daily_loss_pct
         )
         self._max_dd = MaxDrawdownBreaker(settings.risk.max_drawdown_pct)
+        # Latest mark price seen per symbol — used as entry price when the
+        # Director doesn't embed an explicit price in the signal reasoning.
+        self._last_marks: dict[str, float] = {}
 
     async def run(self) -> None:
         """Main loop: listens on signal.execute and market.mark.* simultaneously."""
@@ -54,7 +66,26 @@ class PaperTradeEngine:
             await self._process_mark(mark)
 
     async def _process_signal(self, signal: Signal) -> None:
-        # Check circuit breakers first
+        # ── 1. Close any existing position for this symbol first ─────────────
+        existing = self._account.open_positions.get(signal.symbol)
+        if existing is not None:
+            if existing.side != signal.side:
+                # Opposite direction — close it at best known price before flipping
+                exit_price = self._last_marks.get(signal.symbol, existing.entry_price)
+                logger.info(
+                    "Engine: closing %s %s (direction flip → %s) @ %.2f",
+                    existing.side, signal.symbol, signal.side, exit_price,
+                )
+                await self._close_position(signal.symbol, exit_price, "direction_flip")
+            else:
+                # Same direction already open — skip duplicate signal
+                logger.info(
+                    "Engine: %s %s already open, skipping duplicate signal",
+                    signal.symbol, existing.side,
+                )
+                return
+
+        # ── 2. Circuit breakers ───────────────────────────────────────────────
         if self._daily_loss.is_tripped() or self._max_dd.is_tripped():
             veto = RiskVeto(
                 original_correlation_id=signal.correlation_id,
@@ -64,7 +95,7 @@ class PaperTradeEngine:
             await self._bus.publish("risk.veto", veto)
             return
 
-        # Per-signal guards
+        # ── 3. Per-signal guards ──────────────────────────────────────────────
         guard = SignalGuard(
             self._cfg,
             len(self._account.open_positions),
@@ -80,12 +111,13 @@ class PaperTradeEngine:
             await self._bus.publish("risk.veto", veto)
             return
 
-        # Determine paper fill price from reasoning JSON, or midpoint fallback
+        # ── 4. Best available entry price ─────────────────────────────────────
+        # Prefer: (a) last live mark price  (b) JSON embedded in reasoning  (c) SL/TP midpoint
         try:
             meta = json.loads(signal.reasoning) if signal.reasoning.startswith("{") else {}
             entry_price = float(meta["entry"])
         except Exception:
-            entry_price = (signal.sl + signal.tp) / 2  # midpoint fallback
+            entry_price = self._last_marks.get(signal.symbol) or (signal.sl + signal.tp) / 2
 
         qty = calc_qty(signal.size_usd, entry_price)
         margin = calc_isolated_margin(signal.size_usd, signal.leverage)
@@ -115,17 +147,30 @@ class PaperTradeEngine:
 
     async def _process_mark(self, mark: MarkPrice) -> None:
         symbol = mark.symbol
+        # Always record latest price — used for entry price on next signal
+        self._last_marks[symbol] = mark.mark_price
+
         if symbol not in self._account.open_positions:
             return
 
         self._account.update_mark(symbol, mark.mark_price)
         pos = self._account.open_positions[symbol]
 
-        sl_hit = (pos.side == "LONG" and mark.mark_price <= pos.sl) or \
-                 (pos.side == "SHORT" and mark.mark_price >= pos.sl)
-        tp_hit = (pos.side == "LONG" and mark.mark_price >= pos.tp) or \
-                 (pos.side == "SHORT" and mark.mark_price <= pos.tp)
-        liq_hit = (pos.side == "LONG" and mark.mark_price <= pos.liq_price) or \
+        # ── Force-close if position is too old (prevents zombie positions) ────
+        age_s = time.time() - pos.opened_at
+        if age_s > _MAX_HOLD_SECONDS:
+            logger.info(
+                "Engine: force-closing %s %s — held %.1fh > max %.1fh",
+                pos.side, symbol, age_s / 3600, _MAX_HOLD_SECONDS / 3600,
+            )
+            await self._close_position(symbol, mark.mark_price, "max_hold")
+            return
+
+        sl_hit  = (pos.side == "LONG"  and mark.mark_price <= pos.sl) or \
+                  (pos.side == "SHORT" and mark.mark_price >= pos.sl)
+        tp_hit  = (pos.side == "LONG"  and mark.mark_price >= pos.tp) or \
+                  (pos.side == "SHORT" and mark.mark_price <= pos.tp)
+        liq_hit = (pos.side == "LONG"  and mark.mark_price <= pos.liq_price) or \
                   (pos.side == "SHORT" and mark.mark_price >= pos.liq_price)
 
         if liq_hit:
