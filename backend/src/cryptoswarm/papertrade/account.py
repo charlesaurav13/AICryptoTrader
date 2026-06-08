@@ -15,6 +15,7 @@ class OpenPosition:
     isolated_margin: float
     liq_price: float
     fees: float          # entry fees
+    correlation_id: str = ""     # original Signal.correlation_id → links to DB trades row
     mark_price: float = 0.0
     funding_paid: float = 0.0
     opened_at: float = field(default_factory=time.time)  # unix timestamp

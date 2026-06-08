@@ -98,3 +98,15 @@ class TimescaleWriter:
             }
             for r in reversed(rows)
         ]
+
+    async def get_latest_mark_prices(self) -> dict[str, float]:
+        """Return the most recent mark price for every symbol in the DB."""
+        assert self._pool
+        rows = await self._pool.fetch(
+            """
+            SELECT DISTINCT ON (symbol) symbol, mark_price
+            FROM mark_price
+            ORDER BY symbol, ts DESC
+            """
+        )
+        return {r["symbol"]: float(r["mark_price"]) for r in rows}

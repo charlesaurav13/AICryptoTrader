@@ -80,8 +80,10 @@ async def main() -> None:
     engine      = PaperTradeEngine(bus, cfg)
 
     # Close any trades left open from previous sessions so the dashboard
-    # doesn't show zombie positions and balance drift is reset cleanly.
-    orphans = await pg_writer.close_orphan_positions()
+    # doesn't show zombie positions. Use the latest TimescaleDB mark prices
+    # so realized PnL is realistic, not forced to zero.
+    latest_marks = await ts_writer.get_latest_mark_prices()
+    orphans = await pg_writer.close_orphan_positions(mark_prices=latest_marks)
     if orphans:
         logger.info("Startup: closed %d orphan positions from previous session(s)", orphans)
 

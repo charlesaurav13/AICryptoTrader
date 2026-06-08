@@ -83,26 +83,44 @@ class PostgresWriter:
             "SELECT * FROM trades WHERE closed_ts IS NULL ORDER BY opened_ts"
         )
 
-    async def close_orphan_positions(self) -> int:
+    async def close_orphan_positions(self, mark_prices: dict[str, float] | None = None) -> int:
         """Mark all DB-open trades as closed on startup.
 
-        Called once at boot so positions from dead sessions don't pollute the
-        dashboard forever. They're closed at entry price (zero realized PnL)
-        with reason='session_reset' so the stats stay honest.
+        Called once at boot so ghost positions from crashed sessions don't
+        pollute the dashboard. Uses the most recent known mark price per symbol
+        to compute a realistic realized PnL; falls back to entry_price (0 PnL)
+        when no mark price is available.
+
+        Args:
+            mark_prices: optional {symbol: latest_mark_price} from TimescaleDB.
         """
         assert self._pool
-        result = await self._pool.execute(
-            """
-            UPDATE trades
-            SET exit_price    = entry_price,
-                exit_reason   = 'session_reset',
-                realized_pnl  = 0,
-                closed_ts     = NOW()
-            WHERE closed_ts IS NULL
-            """
+        open_trades = await self._pool.fetch(
+            "SELECT correlation_id, symbol, side, qty, entry_price FROM trades WHERE closed_ts IS NULL"
         )
-        # asyncpg returns "UPDATE <n>"
-        count = int(result.split()[-1])
+        if not open_trades:
+            return 0
+
+        prices = mark_prices or {}
+        count = 0
+        for row in open_trades:
+            exit_px = prices.get(row["symbol"], row["entry_price"])
+            if row["side"] == "LONG":
+                pnl = (exit_px - row["entry_price"]) * row["qty"]
+            else:
+                pnl = (row["entry_price"] - exit_px) * row["qty"]
+            await self._pool.execute(
+                """
+                UPDATE trades
+                SET exit_price=($1)::double precision,
+                    exit_reason='session_reset',
+                    realized_pnl=($2)::double precision,
+                    closed_ts=NOW()
+                WHERE correlation_id=$3 AND closed_ts IS NULL
+                """,
+                exit_px, pnl, row["correlation_id"],
+            )
+            count += 1
         return count
 
     # ------------------------------------------------------------------

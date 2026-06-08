@@ -9,7 +9,7 @@ import logging
 from cryptoswarm.bus.client import BusClient
 from cryptoswarm.bus.messages import (
     MarketTick, MarkPrice, FundingUpdate, LiquidationEvent, BookTicker,
-    TradeExecuted, PositionUpdate, CircuitTripped,
+    TradeExecuted, TradeClosed, PositionUpdate, CircuitTripped,
 )
 from cryptoswarm.storage.timescale import TimescaleWriter
 from cryptoswarm.storage.postgres import PostgresWriter
@@ -69,12 +69,12 @@ class StorageSubscriber:
                         qty=msg.qty, entry_price=msg.entry_price,
                         leverage=msg.leverage, sl=msg.sl, tp=msg.tp,
                         fees=msg.fees,
-                        entry_state={},   # Phase 2 populates full market snapshot
+                        entry_state={},
                         opened_ts=msg.ts,
                     )
                     # Write open RL tuple (reward + next_state filled on close)
                     await self._pg.insert_rl_tuple(
-                        state={},   # Phase 2 populates full market snapshot
+                        state={},
                         action={
                             "symbol": msg.symbol, "side": msg.side,
                             "qty": msg.qty, "entry_price": msg.entry_price,
@@ -83,8 +83,25 @@ class StorageSubscriber:
                         reward=None,
                         next_state=None,
                     )
+
+                elif topic == "trade.closed":
+                    msg = TradeClosed.model_validate_json(data)
+                    await self._pg.update_trade_close(
+                        correlation_id=msg.correlation_id,
+                        exit_price=msg.exit_price,
+                        exit_reason=msg.exit_reason,
+                        realized_pnl=msg.realized_pnl,
+                        funding_paid=msg.funding_paid,
+                        exit_fees=msg.exit_fees,
+                        closed_ts=msg.ts,
+                    )
+                    logger.info(
+                        "DB close: %s %s @ %.2f reason=%s pnl=%.4f",
+                        msg.side, msg.symbol, msg.exit_price, msg.exit_reason, msg.realized_pnl,
+                    )
+
             except Exception as exc:
-                logger.exception("storage trade error: %s", exc)
+                logger.exception("storage trade error topic=%s: %s", topic, exc)
 
     async def _consume_circuits(self) -> None:
         async for _, data in self._bus.subscribe("circuit.tripped"):

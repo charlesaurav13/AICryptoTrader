@@ -101,6 +101,18 @@ class PositionUpdate(BaseMsg):
     close_reason: Optional[Literal["sl", "tp", "liq", "manual"]] = None
 
 
+class TradeClosed(BaseMsg):
+    """Published by PaperTradeEngine whenever a position is closed."""
+    correlation_id: str          # matches the original Signal / trades.correlation_id
+    symbol: str
+    side: Literal["LONG", "SHORT"]
+    exit_price: float
+    exit_reason: str             # sl | tp | liq | max_hold | direction_flip | manual
+    realized_pnl: float          # net of all fees
+    funding_paid: float
+    exit_fees: float
+
+
 class CircuitTripped(BaseMsg):
     breaker_name: str
     value: float

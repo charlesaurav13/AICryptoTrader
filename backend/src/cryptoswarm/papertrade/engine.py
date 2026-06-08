@@ -16,7 +16,7 @@ import time
 
 from cryptoswarm.bus.client import BusClient
 from cryptoswarm.bus.messages import (
-    Signal, TradeExecuted, PositionUpdate, RiskVeto,
+    Signal, TradeExecuted, TradeClosed, PositionUpdate, RiskVeto,
     MarkPrice, CircuitTripped,
 )
 from cryptoswarm.config.settings import Settings
@@ -132,6 +132,7 @@ class PaperTradeEngine:
             entry_price=entry_price, leverage=signal.leverage,
             sl=signal.sl, tp=signal.tp,
             isolated_margin=margin, liq_price=liq, fees=entry_fee,
+            correlation_id=signal.correlation_id,
         )
         self._account.open(pos)
 
@@ -186,6 +187,21 @@ class PaperTradeEngine:
         pos = self._account.open_positions[symbol]
         exit_fee = calc_exit_fee(pos.qty, exit_price, self._fees.taker_rate)
         net_pnl = self._account.close(symbol, exit_price, reason, exit_fee)
+
+        # ── Persist closure to DB via TradeClosed bus event ──────────────────
+        await self._bus.publish(
+            "trade.closed",
+            TradeClosed(
+                correlation_id=pos.correlation_id,
+                symbol=symbol,
+                side=pos.side,  # type: ignore[arg-type]
+                exit_price=exit_price,
+                exit_reason=reason,
+                realized_pnl=net_pnl,
+                funding_paid=pos.funding_paid,
+                exit_fees=exit_fee,
+            ),
+        )
 
         # Update circuit breakers
         self._daily_loss.update_pnl(net_pnl)
