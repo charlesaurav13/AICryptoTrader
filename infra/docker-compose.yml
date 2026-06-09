@@ -145,7 +145,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_GO_API: http://go-gateway:8080     # API base URL (server-side)
+      GO_INTERNAL_URL: http://go-gateway:8080        # used by Next.js rewrites to proxy /gw/* server-side
       NEXT_PUBLIC_GO_WS:  ws://go-gateway:8080/ws    # WebSocket URL (server-side)
     ports:
       - "3001:3000"                     # open http://localhost:3001 in your browser

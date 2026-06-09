@@ -1,7 +1,10 @@
-const GO_API = process.env.NEXT_PUBLIC_GO_API ?? "http://localhost:8080";
+// All API calls go through Next.js /gw/* rewrites, which proxy to the Go
+// gateway at http://go-gateway:8080 internally. This means the browser never
+// needs to resolve "go-gateway" (a Docker-internal hostname).
+const API_PREFIX = "/gw";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${GO_API}${path}`, {
+  const res = await fetch(`${API_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },

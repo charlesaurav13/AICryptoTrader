@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC = ["/login"];
+// /gw/auth/* must be public so the login POST can reach Go without a cookie
+const PUBLIC = ["/login", "/gw/auth"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
