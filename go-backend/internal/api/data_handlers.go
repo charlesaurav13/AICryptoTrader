@@ -29,7 +29,7 @@ func (s *Server) handleTrades(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, trades)
+	c.JSON(http.StatusOK, orEmpty(trades))
 }
 
 func (s *Server) handlePositions(c *gin.Context) {
@@ -54,7 +54,7 @@ func (s *Server) handleDecisions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, decisions)
+	c.JSON(http.StatusOK, orEmpty(decisions))
 }
 
 func (s *Server) handleMLSignals(c *gin.Context) {
@@ -66,7 +66,7 @@ func (s *Server) handleMLSignals(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, signals)
+	c.JSON(http.StatusOK, orEmpty(signals))
 }
 
 func (s *Server) handlePnlHistory(c *gin.Context) {
@@ -77,7 +77,7 @@ func (s *Server) handlePnlHistory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, points)
+	c.JSON(http.StatusOK, orEmpty(points))
 }
 
 func (s *Server) handleAgents(c *gin.Context) {
@@ -91,6 +91,15 @@ func (s *Server) handleAgents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// orEmpty ensures a nil slice serializes as JSON [] instead of null,
+// which the frontend cannot render.
+func orEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 func queryInt(c *gin.Context, key string, def int) int {
