@@ -1,4 +1,4 @@
-"""OllamaScorer — uses local Qwen 2.5 7B to score news relevance + sentiment per symbol."""
+"""OpenRouterScorer — scores news relevance + sentiment via OpenRouter."""
 from __future__ import annotations
 
 import json
@@ -9,22 +9,20 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_TEMPLATE = """You are a crypto trading relevance scorer.
-Given a news article, score its relevance and sentiment for each of these crypto symbols: {symbols}.
+_PROMPT = """You are a crypto trading news scorer.
+Given a news article, score its relevance and sentiment for each symbol: {symbols}.
 
 Article title: {title}
-Article body (first 500 chars): {body}
+Article body: {body}
 
-Return ONLY valid JSON in this exact format (no extra text):
+Return ONLY valid JSON (no markdown, no extra text):
 {{
-  "SYMBOL1": {{"relevance": 0.0, "sentiment": 0.0, "summary": "..."}},
-  "SYMBOL2": {{"relevance": 0.0, "sentiment": 0.0, "summary": "..."}}
+  "SYMBOL1": {{"relevance": 0.0, "sentiment": 0.0, "summary": "max 30 words"}},
+  "SYMBOL2": {{"relevance": 0.0, "sentiment": 0.0, "summary": "max 30 words"}}
 }}
 
-relevance: 0.0 (not related) to 1.0 (directly about this asset)
-sentiment: -1.0 (very bearish) to 1.0 (very bullish)
-summary: max 30 words
-"""
+relevance: 0.0 (unrelated) → 1.0 (directly about this asset)
+sentiment: -1.0 (very bearish) → 1.0 (very bullish)"""
 
 
 @dataclass
@@ -35,16 +33,15 @@ class ScoredArticle:
     summary: str
 
 
-class OllamaScorer:
-    def __init__(self, ollama_url: str, model: str, symbols: list[str]) -> None:
-        self._url = f"{ollama_url.rstrip('/')}/api/generate"
+class OpenRouterScorer:
+    def __init__(self, api_key: str, model: str, symbols: list[str]) -> None:
+        self._api_key = api_key
         self._model = model
         self._symbols = list(symbols)
 
     async def score(self, title: str, body: str) -> list[ScoredArticle]:
-        """Score an article for all symbols. Returns neutral on any error."""
         try:
-            raw = await self._call_ollama(title, body[:500])
+            raw = await self._call(title, body[:500])
             return [
                 ScoredArticle(
                     symbol=sym,
@@ -55,26 +52,35 @@ class OllamaScorer:
                 for sym in self._symbols
             ]
         except Exception as exc:
-            logger.warning("OllamaScorer error: %s — returning neutral scores", exc)
-            return [
-                ScoredArticle(symbol=sym, relevance=0.0, sentiment=0.0, summary="")
-                for sym in self._symbols
-            ]
+            logger.warning("OpenRouterScorer error: %s — returning neutral scores", exc)
+            return [ScoredArticle(symbol=s, relevance=0.0, sentiment=0.0, summary="") for s in self._symbols]
 
-    async def _call_ollama(self, title: str, body: str) -> dict:
-        prompt = _PROMPT_TEMPLATE.format(
+    async def _call(self, title: str, body: str) -> dict:
+        prompt = _PROMPT.format(
             symbols=", ".join(self._symbols),
             title=title,
             body=body,
         )
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                self._url,
-                json={"model": self._model, "prompt": prompt, "stream": False},
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/charlesaurav13/AICryptoTrader",
+                },
+                json={
+                    "model": self._model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                },
             )
             resp.raise_for_status()
-            text = resp.json()["response"].strip()
-            # Extract JSON block if wrapped in markdown
+            text = resp.json()["choices"][0]["message"]["content"].strip()
             if "```" in text:
                 text = text.split("```")[1].removeprefix("json").strip()
             return json.loads(text)
+
+
+# Backwards-compatible alias used by existing imports
+OllamaScorer = OpenRouterScorer

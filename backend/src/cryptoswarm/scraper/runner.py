@@ -1,12 +1,12 @@
-"""ScraperRunner — scrapes all news sources every 30 minutes."""
+"""ScraperRunner — fetches crypto news via OpenRouter (Perplexity Sonar) every 30 minutes."""
 from __future__ import annotations
 
 import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from cryptoswarm.scraper.scorer import OllamaScorer
-from cryptoswarm.scraper.sources import SOURCES
+from cryptoswarm.scraper.searcher import OpenRouterNewsSearcher
+from cryptoswarm.scraper.scorer import OpenRouterScorer
 from cryptoswarm.scraper.writer import NewsWriter
 
 if TYPE_CHECKING:
@@ -18,108 +18,71 @@ logger = logging.getLogger(__name__)
 
 
 class ScraperRunner:
-    def __init__(
-        self,
-        pg: "PostgresWriter",
-        bus: "BusClient",
-        settings: "Settings",
-    ) -> None:
+    def __init__(self, pg: "PostgresWriter", bus: "BusClient", settings: "Settings") -> None:
         self._pg = pg
         self._bus = bus
         self._cfg = settings
-        self._scorer = OllamaScorer(
-            ollama_url=settings.scraper_ollama_url,
-            model=settings.scraper_ollama_model,
-            symbols=settings.symbol_list,
+
+        api_key = settings.openrouter_api_key
+        symbols = settings.symbol_list
+
+        self._searcher = OpenRouterNewsSearcher(
+            api_key=api_key,
+            model=settings.scraper_search_model,
+            symbols=symbols,
+        )
+        self._scorer = OpenRouterScorer(
+            api_key=api_key,
+            model=settings.scraper_score_model,
+            symbols=symbols,
         )
         self._writer = NewsWriter(
             pg=pg,
             bus=bus,
             min_relevance=settings.scraper_min_relevance,
-            model=settings.scraper_ollama_model,
+            model=settings.scraper_score_model,
         )
 
     async def run(self) -> None:
-        """Run forever: scrape all sources, sleep, repeat."""
         while True:
             await self._scrape_all()
             await asyncio.sleep(self._cfg.scraper_interval_s)
 
     async def _scrape_all(self) -> None:
-        logger.info("ScraperRunner: starting scrape cycle (%d sources)", len(SOURCES))
-        tasks = [self._scrape_source(src) for src in SOURCES]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for src, result in zip(SOURCES, results):
+        symbols = self._cfg.symbol_list
+        logger.info("ScraperRunner: searching news for %d symbols via Perplexity Sonar", len(symbols))
+
+        # Search all symbols in parallel
+        searches = await asyncio.gather(
+            *[self._searcher.search_symbol(sym) for sym in symbols],
+            return_exceptions=True,
+        )
+
+        total_articles = 0
+        errors = 0
+        for sym, result in zip(symbols, searches):
             if isinstance(result, Exception):
-                logger.warning("ScraperRunner: source=%s error=%s", src.name, result)
-        errors = sum(1 for r in results if isinstance(r, Exception))
+                logger.warning("ScraperRunner: %s search error — %s", sym, result)
+                errors += 1
+                continue
+            for article in result:
+                try:
+                    scores = await self._scorer.score(
+                        title=article["title"],
+                        body=article["body"],
+                    )
+                    await self._writer.write(
+                        source=f"perplexity_sonar_{sym.lower()}",
+                        url=article["url"],
+                        title=article["title"],
+                        body=article["body"],
+                        scores=scores,
+                    )
+                    total_articles += 1
+                except Exception as exc:
+                    logger.warning("ScraperRunner: write error for %s — %s", sym, exc)
+
         logger.info(
-            "ScraperRunner: cycle complete — %d sources, %d errors",
-            len(SOURCES), errors,
+            "ScraperRunner: cycle complete — %d articles written, %d symbol errors",
+            total_articles, errors,
         )
-
-    async def _scrape_source(self, source) -> None:
-        articles = await self._fetch_articles(source)
-        for article in articles:
-            scores = await self._scorer.score(
-                title=article.get("title", ""),
-                body=article.get("body", ""),
-            )
-            await self._writer.write(
-                source=source.name,
-                url=article.get("url", f"unknown-{source.name}"),
-                title=article.get("title"),
-                body=article.get("body"),
-                scores=scores,
-            )
-
-    async def _fetch_articles(self, source) -> list[dict]:
-        """Use ScrapeGraphAI for article sources; raw JSON fetch for Reddit."""
-        if source.kind == "reddit":
-            return await self._fetch_reddit(source)
-        return await self._fetch_with_scrapegraph(source)
-
-    async def _fetch_reddit(self, source) -> list[dict]:
-        import httpx
-        async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "CryptoSwarm/1.0"}) as client:
-            resp = await client.get(source.url)
-            resp.raise_for_status()
-            posts = resp.json()["data"]["children"]
-            return [
-                {
-                    "title": p["data"]["title"],
-                    "url": f"https://reddit.com{p['data']['permalink']}",
-                    "body": p["data"].get("selftext", "")[:500],
-                }
-                for p in posts
-            ]
-
-    async def _fetch_with_scrapegraph(self, source) -> list[dict]:
-        from scrapegraphai.graphs import SmartScraperGraph
-        config = {
-            "llm": {
-                "base_url": self._cfg.scraper_ollama_url,
-                "model": f"ollama/{self._cfg.scraper_ollama_model}",
-            },
-            "embeddings": {
-                "base_url": self._cfg.scraper_ollama_url,
-                "model": "ollama/nomic-embed-text",
-            },
-            "verbose": False,
-            "headless": True,
-        }
-        loop = asyncio.get_running_loop()
-        # ScrapeGraphAI is sync — run in thread pool
-        result = await loop.run_in_executor(
-            None,
-            lambda: SmartScraperGraph(
-                prompt=source.extraction_prompt,
-                source=source.url,
-                config=config,
-            ).run(),
-        )
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "articles" in result:
-            return result["articles"]
-        return []

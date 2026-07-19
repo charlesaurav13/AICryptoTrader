@@ -86,9 +86,11 @@ class Settings(BaseSettings):
     # Scraper settings
     # ------------------------------------------------------------------ #
     scraper_interval_s: int = 1800          # 30 minutes
-    scraper_ollama_model: str = "qwen2.5:7b"
-    scraper_ollama_url: str = "http://localhost:11434"
     scraper_min_relevance: float = 0.3
+    # Perplexity Sonar via OpenRouter — real-time web search for news
+    scraper_search_model: str = "perplexity/sonar"
+    # Model used to score relevance + sentiment (reuses openrouter_api_key)
+    scraper_score_model: str = "deepseek/deepseek-chat-v3-0324"
 
     # ------------------------------------------------------------------ #
     # ML / RL settings
