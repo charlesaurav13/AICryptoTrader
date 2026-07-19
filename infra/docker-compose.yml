@@ -130,6 +130,8 @@ services:
       GRPC_ADDR:     python-backend:50051        # talks to Python over gRPC internally
       POSTGRES_DSN:  postgresql://postgres:postgres@postgres:5432/cryptoswarm
       TIMESCALE_DSN: postgresql://postgres:postgres@timescale:5432/cryptoswarm_ts
+      GIN_MODE:      release                      # no debug routes / stack traces in prod
+      COOKIE_SECURE: "false"                      # set "true" once served over HTTPS
     ports:
       - "8080:8080"                     # REST + WebSocket for the Next.js frontend
     depends_on:

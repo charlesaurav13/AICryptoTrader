@@ -44,13 +44,14 @@ func ValidateToken(tokenStr, secret string) (*Claims, error) {
 	return claims, nil
 }
 
-func SetCookie(w http.ResponseWriter, token string) {
+func SetCookie(w http.ResponseWriter, token string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(ttl.Seconds()),
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

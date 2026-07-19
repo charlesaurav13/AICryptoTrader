@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,12 +10,19 @@ import (
 	"cryptoswarm/go-backend/internal/db"
 )
 
+// internalError logs the real error server-side and returns a generic message
+// to the client, so internal DB/driver details are never leaked in responses.
+func internalError(c *gin.Context, op string, err error) {
+	log.Printf("api error [%s]: %v", op, err)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+}
+
 func (s *Server) handleStats(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 	stats, err := db.GetStats(ctx, s.pg)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "stats", err)
 		return
 	}
 	c.JSON(http.StatusOK, stats)
@@ -26,7 +34,7 @@ func (s *Server) handleTrades(c *gin.Context) {
 	defer cancel()
 	trades, err := db.GetTrades(ctx, s.pg, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "trades", err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(trades))
@@ -51,7 +59,7 @@ func (s *Server) handleDecisions(c *gin.Context) {
 	defer cancel()
 	decisions, err := db.GetDecisions(ctx, s.pg, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "decisions", err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(decisions))
@@ -63,7 +71,7 @@ func (s *Server) handleMLSignals(c *gin.Context) {
 	defer cancel()
 	signals, err := db.GetMLSignals(ctx, s.pg, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "ml-signals", err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(signals))
@@ -74,7 +82,7 @@ func (s *Server) handlePnlHistory(c *gin.Context) {
 	defer cancel()
 	points, err := db.GetPnlHistory(ctx, s.pg)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "pnl-history", err)
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(points))

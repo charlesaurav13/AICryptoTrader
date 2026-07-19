@@ -1,6 +1,7 @@
 package api
 
 import (
+	"time"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"cryptoswarm/go-backend/internal/config"
@@ -9,16 +10,20 @@ import (
 )
 
 type Server struct {
-	cfg    *config.Config
-	pg     *pgxpool.Pool
-	ts     *pgxpool.Pool
-	grpc   *grpcclient.Client
-	hub    *ws.Hub
-	engine *gin.Engine
+	cfg        *config.Config
+	pg         *pgxpool.Pool
+	ts         *pgxpool.Pool
+	grpc       *grpcclient.Client
+	hub        *ws.Hub
+	engine     *gin.Engine
+	loginLimit *loginLimiter
 }
 
 func NewServer(cfg *config.Config, pg, ts *pgxpool.Pool, grpc *grpcclient.Client, hub *ws.Hub) *Server {
-	s := &Server{cfg: cfg, pg: pg, ts: ts, grpc: grpc, hub: hub}
+	s := &Server{
+		cfg: cfg, pg: pg, ts: ts, grpc: grpc, hub: hub,
+		loginLimit: newLoginLimiter(15, 5*time.Minute), // 15 attempts / 5 min per IP
+	}
 	s.engine = gin.Default()
 	s.engine.Use(corsMiddleware())
 	s.routes()
@@ -30,7 +35,7 @@ func (s *Server) Run(addr string) error {
 }
 
 func (s *Server) routes() {
-	s.engine.POST("/auth/login", s.handleLogin)
+	s.engine.POST("/auth/login", s.loginLimit.middleware(), s.handleLogin)
 	s.engine.POST("/auth/logout", s.handleLogout)
 	s.engine.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 

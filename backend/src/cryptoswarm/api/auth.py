@@ -29,8 +29,23 @@ def verify_session_token(token: str, secret: str) -> str | None:
 
 
 def check_password(plain: str, stored: str) -> bool:
-    """Compare plain password against stored (plain-text comparison for simplicity)."""
-    return plain == stored
+    """Verify a submitted password against the configured credential.
+
+    If DASHBOARD_PASSWORD_HASH (a bcrypt hash) is set it is used and takes
+    precedence; otherwise falls back to a constant-time comparison against the
+    plaintext DASHBOARD_PASSWORD (dev only). Constant-time avoids leaking the
+    password length/prefix via response timing.
+    """
+    import os
+    import hmac
+
+    pw_hash = os.getenv("DASHBOARD_PASSWORD_HASH", "")
+    if pw_hash:
+        try:
+            return bcrypt.verify(plain, pw_hash)
+        except (ValueError, TypeError):
+            return False
+    return hmac.compare_digest(plain, stored)
 
 
 def require_auth(request: Request) -> str:
