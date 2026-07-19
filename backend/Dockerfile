@@ -3,6 +3,9 @@ FROM python:3.12-slim AS builder
 
 RUN pip install --no-cache-dir uv==0.5.29
 
+# Large wheels (torch ~400MB) need more than uv's default 30s download timeout
+ENV UV_HTTP_TIMEOUT=600
+
 WORKDIR /build
 COPY pyproject.toml .
 
