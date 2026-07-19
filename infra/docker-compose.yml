@@ -75,6 +75,7 @@ services:
   # Python Backend — AI agents, ML (Kronos), gRPC server, FastAPI REST
   # Source: ../backend   |   Logs: docker compose logs -f python-backend
   python-backend:
+    pull_policy: never
     container_name: cryptoswarm-python
     image: cryptoswarm/python:latest
     build:
@@ -114,6 +115,7 @@ services:
   # Go Gateway — JWT auth, REST API, WebSocket hub, reads DB directly
   # Source: ../go-backend   |   Logs: docker compose logs -f go-gateway
   go-gateway:
+    pull_policy: never
     container_name: cryptoswarm-go
     image: cryptoswarm/go:latest
     build:
@@ -139,6 +141,7 @@ services:
   # Next.js Dashboard — trading UI served at http://localhost:3000
   # Source: ../frontend   |   Logs: docker compose logs -f web
   web:
+    pull_policy: never
     container_name: cryptoswarm-web
     image: cryptoswarm/web:latest
     build:
