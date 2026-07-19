@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
+from cryptoswarm.api.auth import require_auth
 from cryptoswarm.api.deps import get_pg
 
 router = APIRouter(prefix="/trades")
 
 
 @router.get("")
-async def list_trades(limit: int = 50, pg=Depends(get_pg)):
+async def list_trades(limit: int = 50, pg=Depends(get_pg), _: str = Depends(require_auth)):
     rows = await pg._pool.fetch(
         "SELECT * FROM trades ORDER BY opened_ts DESC LIMIT $1", limit
     )

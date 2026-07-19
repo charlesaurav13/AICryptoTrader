@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
+from cryptoswarm.api.auth import require_auth
 from cryptoswarm.api.deps import get_engine
 
 router = APIRouter(prefix="/positions")
 
 
 @router.get("")
-async def list_positions(engine=Depends(get_engine)):
+async def list_positions(engine=Depends(get_engine), _: str = Depends(require_auth)):
     acc = engine._account
     return {
         "balance": acc.balance,

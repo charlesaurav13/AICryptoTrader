@@ -133,6 +133,31 @@ class Settings(BaseSettings):
     )
 
 
+# Known committed defaults. The process refuses to start on any of these so a
+# deploy can never sign session tokens with a public secret or accept the
+# public default password (fail-closed).
+_WEAK_SECRETS = {
+    "",
+    "change-this-secret",
+    "change-this-to-a-random-secret-32chars",
+    "cryptoswarm2024",
+}
+
+
+def _assert_strong_secrets(s: "Settings") -> None:
+    if s.dashboard_secret_key in _WEAK_SECRETS or len(s.dashboard_secret_key) < 32:
+        raise RuntimeError(
+            "DASHBOARD_SECRET_KEY is unset, a known default, or too short — "
+            "set a strong random value (openssl rand -hex 32)"
+        )
+    if s.dashboard_password in _WEAK_SECRETS:
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD is unset or the known default — set a strong unique password"
+        )
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    _assert_strong_secrets(s)
+    return s

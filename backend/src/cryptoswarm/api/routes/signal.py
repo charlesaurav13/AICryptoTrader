@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from cryptoswarm.api.auth import require_auth
 from cryptoswarm.api.deps import get_bus
 from cryptoswarm.bus.messages import Signal
 
@@ -18,7 +19,7 @@ class SignalRequest(BaseModel):
 
 
 @router.post("/signal")
-async def post_signal(req: SignalRequest, bus=Depends(get_bus)):
+async def post_signal(req: SignalRequest, bus=Depends(get_bus), _: str = Depends(require_auth)):
     reasoning = json.dumps({"entry": req.entry}) if req.entry else ""
     sig = Signal(
         symbol=req.symbol, side=req.side,

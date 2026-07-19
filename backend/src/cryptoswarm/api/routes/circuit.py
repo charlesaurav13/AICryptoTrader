@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
+from cryptoswarm.api.auth import require_auth
 from cryptoswarm.api.deps import get_engine
 
 router = APIRouter(prefix="/circuit-breaker")
 
 
 @router.get("/status")
-async def status(engine=Depends(get_engine)):
+async def status(engine=Depends(get_engine), _: str = Depends(require_auth)):
     dl = engine._daily_loss
     dd = engine._max_dd
     return {
@@ -22,7 +23,7 @@ async def status(engine=Depends(get_engine)):
 
 
 @router.post("/reset")
-async def reset(engine=Depends(get_engine)):
+async def reset(engine=Depends(get_engine), _: str = Depends(require_auth)):
     engine._daily_loss.reset()
     engine._max_dd.reset()
     return {"reset": True}

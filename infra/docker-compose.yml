@@ -92,9 +92,13 @@ services:
       HF_DATASETS_CACHE:  /models/datasets
     volumes:
       - model_cache:/models              # Kronos-base weights persist here
-    ports:
-      - "8000:8000"                     # FastAPI REST + SSE dashboard
-      - "50051:50051"                   # gRPC (consumed by Go gateway)
+    # Internal-only: reachable by go-gateway over the Docker network but NOT
+    # published to the host. The FastAPI control plane (trade signals,
+    # circuit-breaker reset) and the gRPC engine control must never be exposed
+    # to the LAN/internet without auth.
+    expose:
+      - "8000"                          # FastAPI REST + SSE dashboard
+      - "50051"                         # gRPC (consumed by Go gateway)
     depends_on:
       valkey:    { condition: service_healthy }
       timescale: { condition: service_healthy }
